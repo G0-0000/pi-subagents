@@ -9,8 +9,9 @@ import { after, afterEach, before, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { readProcessTerminal } from "../../src/runs/background/process-terminal.ts";
 import type { MockPi } from "../support/helpers.ts";
-import { createEventBus, createMockPi, createTempDir, events, makeAgent, makeAgentConfigs, makeMinimalCtx, removeTempDir, tryImport } from "../support/helpers.ts";
+import { createEventBus, createMockPi, createTempDir, events, makeAgent, makeAgentConfigs, makeMinimalCtx, tryImport } from "../support/helpers.ts";
 
 interface AcceptanceSummary {
 	status?: string;
@@ -123,6 +124,21 @@ async function waitForAsyncResult(id: string, timeoutMs = 15_000): Promise<Async
 describe("acceptance file reports", { skip: !runSync ? "pi packages not available" : undefined }, () => {
 	let tempDir: string;
 	let mockPi: MockPi;
+	const ownedRunners = new Set<string>();
+	let terminalBarrier: Promise<void> | undefined;
+
+	async function waitForOwnedRunner(id: string): Promise<void> {
+		const asyncDir = path.join(ASYNC_DIR!, id);
+		const deadline = Date.now() + 10_000;
+		let proof;
+		do {
+			// The reader validates identity/shape and treats absent or partial I/O as unproven.
+			proof = readProcessTerminal(asyncDir, { runId: id });
+			if (proof?.state === "observed") return;
+			await new Promise((resolve) => setTimeout(resolve, 50));
+		} while (Date.now() <= deadline);
+		assert.fail(`No terminal proof for owned runner ${id}; retaining ${tempDir} and mock queue ${mockPi.dir}. Last proof: ${JSON.stringify(proof)}`);
+	}
 
 	before(() => {
 		mockPi = createMockPi();
@@ -130,16 +146,23 @@ describe("acceptance file reports", { skip: !runSync ? "pi packages not availabl
 	});
 
 	after(() => {
+		assert.equal(ownedRunners.size, 0, "Unproven owned runners: retain the mock queue");
 		mockPi.uninstall();
 	});
 
 	beforeEach(() => {
+		assert.equal(ownedRunners.size, 0, "Unproven owned runners: do not reset the mock queue");
+		terminalBarrier = undefined;
 		tempDir = createTempDir();
 		mockPi.reset();
 	});
 
-	afterEach(() => {
-		removeTempDir(tempDir);
+	afterEach(async () => {
+		// Result publication precedes runner close. Also drain on assertion/result-wait failure.
+		// Cache a failed barrier so later hooks cannot retry cleanup or reset shared state.
+		terminalBarrier ??= Promise.all([...ownedRunners].map(waitForOwnedRunner)).then(() => { ownedRunners.clear(); });
+		await terminalBarrier;
+		fs.rmSync(tempDir, { recursive: true, force: true });
 	});
 
 	function conflictingReportsCall(outputPath: string, fileStatus: "satisfied" | "not-satisfied", textStatus: "satisfied" | "not-satisfied") {
@@ -406,6 +429,8 @@ describe("acceptance file reports", { skip: !runSync ? "pi packages not availabl
 
 	describe("background runner", { skip: isAsyncAvailable && !isAsyncAvailable() ? "jiti not available" : undefined }, () => {
 		function runAsyncSingle(id: string, outputPath: string, outputMode: "inline" | "file-only", artifactConfig = DISABLED_ARTIFACTS) {
+			// Register before launch so even a throwing launch cannot escape teardown ownership.
+			ownedRunners.add(id);
 			executeAsyncSingle!(id, {
 				agent: "worker",
 				task: "Write the findings report.",
