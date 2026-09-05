@@ -6,6 +6,7 @@
 - Let trusted extensions register session-scoped named workflows with validated arguments and exact host-command grants (#1907).
 
 ### Fixed
+- Keep the fleet inspector roster stable by ordering active runs by start time instead of last activity heartbeat (#1923).
 - Clear recovered assistant errors on successful tool-use completion, including terminating structured output (#1919). Thanks to [@Jonathanm10](https://github.com/Jonathanm10).
 - Diagnose empty terminal text responses as empty-output failures rather than earlier exploratory tool errors (#1921).
 - Rescue confident read-only background completions misclassified as implementation before publishing missing-edit failures (#1911). Thanks to [@yanqianglu](https://github.com/yanqianglu).
