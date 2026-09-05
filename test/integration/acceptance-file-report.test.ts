@@ -114,7 +114,7 @@ function acceptanceReport(criterionStatus: "satisfied" | "not-satisfied", eviden
 }
 
 async function waitForAsyncResult(id: string, timeoutMs = 15_000): Promise<AsyncResultPayload> {
-	const marks = runnerDiagnostics.get(id)?.marks;
+	const marks = ownedRunners.get(id)?.marks;
 	if (marks) marks.resultWaitStartedAt = Date.now();
 	const resultPath = path.join(RESULTS_DIR!, `${id}.json`);
 	const deadline = Date.now() + timeoutMs;
@@ -129,7 +129,7 @@ async function waitForAsyncResult(id: string, timeoutMs = 15_000): Promise<Async
 
 // Diagnostic only: retaining ChildProcess objects may perturb observer lifetime.
 // Neither callbacks nor these projections authorize cleanup.
-const runnerDiagnostics = new Map<string, ReturnType<typeof observeRunner>>();
+const ownedRunners = new Map<string, ReturnType<typeof observeRunner>>();
 function observeRunner(id: string, bodyStartedAt: number) {
 	const record = (value: unknown): Record<string, unknown> => value !== null && typeof value === "object" ? value as Record<string, unknown> : {};
 	const number = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : undefined;
@@ -211,11 +211,10 @@ describe("acceptance file reports", { skip: !runSync ? "pi packages not availabl
 	let tempDir: string;
 	let mockPi: MockPi;
 	let bodyStartedAt: number;
-	const ownedRunners = new Set<string>();
 	let terminalBarrier: Promise<void> | undefined;
 
 	async function waitForOwnedRunner(id: string): Promise<void> {
-		const diagnostic = runnerDiagnostics.get(id)!;
+		const diagnostic = ownedRunners.get(id)!;
 		diagnostic.marks.teardownStartedAt = Date.now();
 		const asyncDir = path.join(ASYNC_DIR!, id);
 		const deadline = Date.now() + 10_000;
@@ -225,7 +224,6 @@ describe("acceptance file reports", { skip: !runSync ? "pi packages not availabl
 			proof = readProcessTerminal(asyncDir, { runId: id });
 			if (proof?.state === "observed") {
 				diagnostic.dispose();
-				runnerDiagnostics.delete(id);
 				return;
 			}
 			await new Promise((resolve) => setTimeout(resolve, 50));
@@ -258,7 +256,7 @@ describe("acceptance file reports", { skip: !runSync ? "pi packages not availabl
 	afterEach(async () => {
 		// Result publication precedes runner close. Also drain on assertion/result-wait failure.
 		// Cache a failed barrier so later hooks cannot retry cleanup or reset shared state.
-		terminalBarrier ??= Promise.all([...ownedRunners].map(waitForOwnedRunner)).then(() => { ownedRunners.clear(); });
+		terminalBarrier ??= Promise.all([...ownedRunners.keys()].map(waitForOwnedRunner)).then(() => { ownedRunners.clear(); });
 		await terminalBarrier;
 		fs.rmSync(tempDir, { recursive: true, force: true });
 	});
@@ -527,10 +525,9 @@ describe("acceptance file reports", { skip: !runSync ? "pi packages not availabl
 
 	describe("background runner", { skip: isAsyncAvailable && !isAsyncAvailable() ? "jiti not available" : undefined }, () => {
 		function runAsyncSingle(id: string, outputPath: string, outputMode: "inline" | "file-only", artifactConfig = DISABLED_ARTIFACTS) {
-			// Register before launch so even a throwing launch cannot escape teardown ownership.
-			ownedRunners.add(id);
 			const diagnostic = observeRunner(id, bodyStartedAt);
-			runnerDiagnostics.set(id, diagnostic);
+			// Register before launch so even a throwing launch cannot escape teardown ownership.
+			ownedRunners.set(id, diagnostic);
 			diagnostic.launch(() => executeAsyncSingle!(id, {
 				agent: "worker",
 				task: "Write the findings report.",
