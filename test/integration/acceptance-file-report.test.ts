@@ -7,6 +7,8 @@
  */
 import { after, afterEach, before, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { ChildProcess } from "node:child_process";
+import { channel } from "node:diagnostics_channel";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { readProcessTerminal } from "../../src/runs/background/process-terminal.ts";
@@ -112,32 +114,127 @@ function acceptanceReport(criterionStatus: "satisfied" | "not-satisfied", eviden
 }
 
 async function waitForAsyncResult(id: string, timeoutMs = 15_000): Promise<AsyncResultPayload> {
+	const marks = runnerDiagnostics.get(id)?.marks;
+	if (marks) marks.resultWaitStartedAt = Date.now();
 	const resultPath = path.join(RESULTS_DIR!, `${id}.json`);
 	const deadline = Date.now() + timeoutMs;
 	while (!fs.existsSync(resultPath)) {
 		if (Date.now() > deadline) assert.fail(`Timed out waiting for async result file: ${resultPath}`);
 		await new Promise((resolve) => setTimeout(resolve, 100));
 	}
-	return JSON.parse(fs.readFileSync(resultPath, "utf-8")) as AsyncResultPayload;
+	const payload = JSON.parse(fs.readFileSync(resultPath, "utf-8")) as AsyncResultPayload;
+	if (marks) marks.resultReadAt = Date.now();
+	return payload;
+}
+
+// Diagnostic only: retaining ChildProcess objects may perturb observer lifetime.
+// Neither callbacks nor these projections authorize cleanup.
+const runnerDiagnostics = new Map<string, ReturnType<typeof observeRunner>>();
+function observeRunner(id: string, bodyStartedAt: number) {
+	const record = (value: unknown): Record<string, unknown> => value !== null && typeof value === "object" ? value as Record<string, unknown> : {};
+	const number = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : undefined;
+	const known = (value: unknown, values: string[]) => typeof value === "string" && values.includes(value) ? value : undefined;
+	const errorCode = (error: unknown) => known(record(error).code, ["ENOENT", "EACCES", "EPERM", "EBUSY", "EIO", "EMFILE", "ENFILE", "ENOSPC"]) ?? "other";
+	const project = (value: unknown) => {
+		const raw = record(value);
+		return {
+			runMatches: (raw.runId ?? raw.id) === id,
+			runnerProcessInstanceId: typeof raw.runnerProcessInstanceId === "string" && /^[a-zA-Z0-9:-]{1,128}$/.test(raw.runnerProcessInstanceId) ? raw.runnerProcessInstanceId : undefined,
+			state: known(raw.state, ["pending", "running", "complete", "failed", "stopped", "paused", "observed", "unknown", "not-started"]),
+			reason: known(raw.reason, ["runner-candidate-missing", "runner-instance-mismatch", "writer-close-unverified", "process-tree-unverified", "canonical-session-unavailable", "canonical-session-lease-active", "canonical-session-release-unverified", "proof-write-failed"]),
+			pid: number(raw.pid), startedAt: number(raw.startedAt), endedAt: number(raw.endedAt), observedAt: number(raw.observedAt),
+			success: typeof raw.success === "boolean" ? raw.success : undefined,
+			writerCount: Array.isArray(record(raw.writers)["0"]) ? record(raw.writers)["0"].length : undefined,
+			expectedWriters: number(record(raw.expectedWriters)["0"]),
+		};
+	};
+	const marks: Record<string, number> = { bodyStartedAt, launchStartedAt: Date.now() };
+	let pid: number | undefined;
+	const notifications: unknown[] = [];
+	const processes: Array<{ proc: ChildProcess; events: unknown[]; dispose: () => void }> = [];
+	const diagnosticChannel = channel("child_process");
+	const onProcess = (message: unknown) => {
+		const proc = record(message).process;
+		if (!(proc instanceof ChildProcess) || processes.length >= 8) return;
+		const events: unknown[] = [];
+		const add = (type: string, code?: number | null, signal?: string | null) => events.push({ type, at: Date.now(), code, signal: signal === null ? null : known(signal, ["SIGTERM", "SIGKILL", "SIGINT", "SIGABRT", "SIGSEGV"]) });
+		const spawn = () => add("spawn");
+		const error = (err: Error) => events.push({ type: "error", at: Date.now(), code: errorCode(err) });
+		const exit = (code: number | null, signal: string | null) => add("exit", code, signal);
+		const close = (code: number | null, signal: string | null) => add("close", code, signal);
+		proc.once("spawn", spawn).once("error", error).once("exit", exit).once("close", close);
+		processes.push({ proc, events, dispose: () => { proc.off("spawn", spawn).off("error", error).off("exit", exit).off("close", close); } });
+	};
+	return {
+		marks,
+		emit(type: string, value: unknown) {
+			const raw = record(value);
+			if (type === "subagent:async-started" && raw.id === id) pid = number(raw.pid);
+			else if (type !== "subagent:process-terminal" || raw.runId !== id) return;
+			if (notifications.length < 8) notifications.push({ type, at: Date.now(), ...project(raw) });
+		},
+		launch(run: () => unknown) {
+			diagnosticChannel.subscribe(onProcess);
+			try { return run(); }
+			finally {
+				marks.launchFinishedAt = Date.now();
+				diagnosticChannel.unsubscribe(onProcess);
+				for (const entry of processes) if (pid === undefined || entry.proc.pid !== pid) entry.dispose();
+			}
+		},
+		snapshot(proof: unknown) {
+			const read = (file: string) => {
+				try {
+					const fd = fs.openSync(file, "r");
+					try {
+						const buffer = Buffer.alloc(64 * 1024 + 1);
+						const bytes = fs.readSync(fd, buffer, 0, buffer.length, 0);
+						if (bytes === buffer.length) return { io: "oversized" };
+						return { io: "readable", ...project(JSON.parse(buffer.toString("utf-8", 0, bytes))) };
+					} finally { fs.closeSync(fd); }
+				} catch (error) { return { io: error instanceof SyntaxError ? "invalid-json" : errorCode(error) }; }
+			};
+			const asyncDir = path.join(ASYNC_DIR!, id);
+			return {
+				id, pid, marks, notifications, lastProof: project(proof), snapshotAt: Date.now(),
+				capturedProcesses: processes.length,
+				processes: processes.filter(({ proc }) => pid !== undefined && proc.pid === pid).map(({ proc, events }) => ({ pid: proc.pid, exitCode: proc.exitCode, signalCode: known(proc.signalCode, ["SIGTERM", "SIGKILL", "SIGINT", "SIGABRT", "SIGSEGV"]), events })),
+				status: read(path.join(asyncDir, "status.json")), result: read(path.join(RESULTS_DIR!, `${id}.json`)),
+				candidate: read(path.join(asyncDir, "process-terminal-candidate.json")), proof: read(path.join(asyncDir, "process-terminal.json")),
+			};
+		},
+		dispose() { for (const entry of processes) entry.dispose(); },
+	};
 }
 
 describe("acceptance file reports", { skip: !runSync ? "pi packages not available" : undefined }, () => {
 	let tempDir: string;
 	let mockPi: MockPi;
+	let bodyStartedAt: number;
 	const ownedRunners = new Set<string>();
 	let terminalBarrier: Promise<void> | undefined;
 
 	async function waitForOwnedRunner(id: string): Promise<void> {
+		const diagnostic = runnerDiagnostics.get(id)!;
+		diagnostic.marks.teardownStartedAt = Date.now();
 		const asyncDir = path.join(ASYNC_DIR!, id);
 		const deadline = Date.now() + 10_000;
 		let proof;
 		do {
 			// The reader validates identity/shape and treats absent or partial I/O as unproven.
 			proof = readProcessTerminal(asyncDir, { runId: id });
-			if (proof?.state === "observed") return;
+			if (proof?.state === "observed") {
+				diagnostic.dispose();
+				runnerDiagnostics.delete(id);
+				return;
+			}
 			await new Promise((resolve) => setTimeout(resolve, 50));
 		} while (Date.now() <= deadline);
-		assert.fail(`No terminal proof for owned runner ${id}; retaining ${tempDir} and mock queue ${mockPi.dir}. Last proof: ${JSON.stringify(proof)}`);
+		let evidence: unknown;
+		try { evidence = diagnostic.snapshot(proof); }
+		catch { evidence = { snapshot: "unavailable" }; }
+		finally { diagnostic.dispose(); }
+		assert.fail(`No terminal proof for owned runner ${id}; retaining ${tempDir} and mock queue ${mockPi.dir}. Diagnostics: ${JSON.stringify(evidence)}`);
 	}
 
 	before(() => {
@@ -155,6 +252,7 @@ describe("acceptance file reports", { skip: !runSync ? "pi packages not availabl
 		terminalBarrier = undefined;
 		tempDir = createTempDir();
 		mockPi.reset();
+		bodyStartedAt = Date.now();
 	});
 
 	afterEach(async () => {
@@ -431,11 +529,13 @@ describe("acceptance file reports", { skip: !runSync ? "pi packages not availabl
 		function runAsyncSingle(id: string, outputPath: string, outputMode: "inline" | "file-only", artifactConfig = DISABLED_ARTIFACTS) {
 			// Register before launch so even a throwing launch cannot escape teardown ownership.
 			ownedRunners.add(id);
-			executeAsyncSingle!(id, {
+			const diagnostic = observeRunner(id, bodyStartedAt);
+			runnerDiagnostics.set(id, diagnostic);
+			diagnostic.launch(() => executeAsyncSingle!(id, {
 				agent: "worker",
 				task: "Write the findings report.",
 				agentConfig: makeAgent("worker", { completionGuard: false }),
-				ctx: { pi: { events: { emit() {} } }, cwd: tempDir, currentSessionId: "session-file-report" },
+				ctx: { pi: { events: { emit: diagnostic.emit } }, cwd: tempDir, currentSessionId: "session-file-report" },
 				artifactConfig,
 				artifactsDir: path.join(tempDir, ".pi/subagents", "artifacts"),
 				shareEnabled: false,
@@ -443,7 +543,7 @@ describe("acceptance file reports", { skip: !runSync ? "pi packages not availabl
 				output: outputPath,
 				outputMode,
 				acceptance: { level: "checked", criteria: ["Report the findings"] },
-			});
+			}));
 		}
 
 		it("file-only mode accepts from the child-written file when the text report fails", async () => {
