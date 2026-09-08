@@ -5,6 +5,7 @@ import type { Model, ProviderHeaders } from "@earendil-works/pi-ai";
 import { Type, type Static } from "typebox";
 import { resolveModelCandidate } from "../runs/shared/model-fallback.ts";
 import { agentStreamOptions } from "../shared/agent-stream-options.ts";
+import { opencodeSessionHeaders } from "../shared/opencode-session-headers.ts";
 import { resolveEffectiveThinking, splitKnownThinkingSuffix, THINKING_LEVELS, toModelInfo } from "../shared/model-info.ts";
 import { createWatchdogDiffTool, WATCHDOG_DIFF_TOOL_NAME, type WatchdogDiffBaseline } from "./diff-tool.ts";
 import { loadWatchdogGuidance } from "./guidance.ts";
@@ -270,6 +271,7 @@ export function createMainWatchdogReview(provider: WatchdogContextProvider, opti
 		const baseStreamFn = options.streamFn ?? (registeredProvider?.streamSimple && registeredProvider.api === selection.model.api
 			? registeredProvider.streamSimple
 			: streamSimple);
+		const sessionId = ctx.sessionManager.getSessionId();
 		const streamFn: StreamFn = (model, context, streamOptions) => {
 			// Agent may enter one final loop iteration after an aborted mixed tool batch.
 			// Never send that iteration to the provider after an intentional yield.
@@ -278,7 +280,7 @@ export function createMainWatchdogReview(provider: WatchdogContextProvider, opti
 				...streamOptions,
 				...(auth.apiKey ? { apiKey: auth.apiKey } : {}),
 				env: auth.env || streamOptions?.env ? { ...(auth.env ?? {}), ...(streamOptions?.env ?? {}) } : undefined,
-				headers: { ...(streamOptions?.headers ?? {}), ...(auth.headers ?? {}) },
+				headers: { ...opencodeSessionHeaders(model, sessionId), ...(streamOptions?.headers ?? {}), ...(auth.headers ?? {}) },
 			});
 		};
 		const diffBaseline = options.diffBaseline?.();

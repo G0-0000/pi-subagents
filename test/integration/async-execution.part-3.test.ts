@@ -764,7 +764,7 @@ export default function() {
     },
     resolveCliModel: ({ cliModel }) => { assert.equal(cliModel, "intent-test/child-attempt"); return { model }; },
     createAgentSession: async ({ resourceLoader, model }) => {
-      const ctx = Proxy.revocable({ model, modelRegistry: registry }, {});
+      const ctx = Proxy.revocable({ model, modelRegistry: registry, sessionManager: { getSessionId: () => "intent-child", getSessionFile: () => undefined } }, {});
       let listener;
       const messages = [];
       return { session: {

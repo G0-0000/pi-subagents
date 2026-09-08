@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { listBackgroundWorkProviders } from "../../api/background-work.ts";
 import { ReadonlyDrainObservation } from "./readonly-drain-observation.ts";
 import registerFanoutChildSubagentExtension from "../../extension/fanout-child.ts";
@@ -7,6 +7,7 @@ import registerSubagentPromptRuntime from "./subagent-prompt-runtime.ts";
 import type { ChildRuntimeConfig } from "./child-runtime-config.ts";
 import type { ChildToolDiagnostic } from "./tool-availability.ts";
 import type { ChildSessionLaunch } from "./child-session.ts";
+import type { ArbiterModelContext } from "./llm-intent-arbiter.ts";
 import type { ChildTranscriptWriter } from "../../shared/child-transcript.ts";
 import { projectRuntimeAcknowledgedExtensions } from "./runtime-acknowledged-extensions.ts";
 
@@ -130,7 +131,7 @@ export function createChildHooks(config: ChildRuntimeConfig): ChildHookExtension
 export function createCapturedChildHooks(config: ChildRuntimeConfig, runner = false) {
 	let diagnostic: ChildToolDiagnostic | undefined;
 	let acknowledgedIds: string[] | undefined;
-	let completionIntentContext: Pick<ExtensionContext, "model" | "modelRegistry"> | undefined;
+	let completionIntentContext: ArbiterModelContext | undefined;
 	const capture: OwnedCapture = {
 		toolDiagnostic: (value) => { diagnostic = value; },
 		runtimeAcknowledgements: (ids) => { acknowledgedIds = ids; },
@@ -139,8 +140,12 @@ export function createCapturedChildHooks(config: ChildRuntimeConfig, runner = fa
 	const hooks = childHooks(config, capture);
 	if (runner) {
 		hooks.push({ name: "pi-subagents:completion-intent", factory: (pi) => pi.on("session_start", (_event, childCtx) => {
-			// Retain only attempt model services, not the live child session.
-			completionIntentContext = { model: childCtx.model, modelRegistry: childCtx.modelRegistry };
+			// Retain only attempt model services and the session id string, not the live child session.
+			completionIntentContext = {
+				model: childCtx.model,
+				modelRegistry: childCtx.modelRegistry,
+				sessionId: childCtx.sessionManager.getSessionId(),
+			};
 		}) });
 		const proof = promptProofs.get(hooks[0]!.factory);
 		if (proof) proof.factories = hooks.map((hook) => hook.factory);

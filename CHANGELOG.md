@@ -14,6 +14,7 @@
 
 ### Fixed
 - Run the child prompt filter before ambient extensions inspect the system prompt. This keeps provider bridges aligned with the final child-visible context while preserving intentional global-context and parent-only skill exclusions. Thanks to [@leftytennis](https://github.com/leftytennis) for #2043.
+- Send OpenCode session-routing headers on internal helper model calls so task arbitration, watchdog, and prompt audit requests keep the same provider session as ordinary Pi traffic. Thanks to [@IdrisGit](https://github.com/IdrisGit) for #2041.
 - Intersect agent frontmatter `tools:` with host-available builtins before spawning children, so hosts with restricted tool menus (e.g. Prime Agent's `ipython`-only set) reject unavailable tools at launch instead of after spawn. Thanks to [@BioInfo](https://github.com/BioInfo) for #2034.
 - Redirect `@earendil-works/pi-tui` via module hooks in background runners alongside `pi-server`, avoiding MODULE_NOT_FOUND in unusual installation layouts where the package exists in the alias map but cannot be found through standard node_modules resolution (#2020). Thanks to [@kroediger](https://github.com/kroediger).
 - Prevent stale final-drain timers from aborting resumed native foreground and background child work. Thanks to [@harche](https://github.com/harche) for #2025.

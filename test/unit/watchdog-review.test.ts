@@ -69,6 +69,7 @@ function createCtx(input: {
 		model: input.current,
 		...(input.thinkingLevel ? { thinkingLevel: input.thinkingLevel } : {}),
 		signal: undefined,
+		sessionManager: { getSessionId: () => "watchdog-review-session" },
 		getSystemPrompt: () => "Parent system prompt",
 		modelRegistry: {
 			getAvailable: () => allModels.filter((entry) => authenticated.has(`${entry.provider}/${entry.id}`)),
