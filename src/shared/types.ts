@@ -708,6 +708,7 @@ export type ProcessTerminal =
 export interface ScheduleOrigin {
 	id: string;
 	name?: string;
+	quiet?: boolean;
 }
 
 export type SteeringActionState = "delivered" | "scheduled" | "pending" | "partial" | "recovered" | "failed";
