@@ -19,6 +19,7 @@
 - Document task-derived behavior labels for workflow launches in the built-in pi-subagents skill, including reviews and retained follow-ups.
 
 ### Fixed
+- Reject materialized workflow launch groups with invalid worktree repositories or dirty sources before dispatching children or claiming fan-out/output ownership. Allocation still rechecks; workflow-key failure traces may remain. Thanks to [@yanqianglu](https://github.com/yanqianglu) for #2076.
 - Keep the configured main watchdog model and thinking in recommendations instead of suggesting a hardcoded replacement, and clarify user-scope model saves. Thanks to [@freezscholte](https://github.com/freezscholte) for #2078.
 - Recognize OpenRouter's status-prefixed 401 errors for configured model fallback before tool work, including watchdog reviews. Thanks to [@freezscholte](https://github.com/freezscholte) for #2077.
 - A manual `schedule.run` that attaches a run satisfies the next natural fire, so manually-run schedules no longer double-fire (#2052). Thanks to [@brandonmwest](https://github.com/brandonmwest) for #2052.
