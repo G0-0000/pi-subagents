@@ -18,6 +18,7 @@
 - Document task-derived behavior labels for workflow launches in the built-in pi-subagents skill, including reviews and retained follow-ups.
 
 ### Fixed
+- Wait for remembered detached foreground descendants before parent settlement, without aborting a result-bearing child on the runner grace window. Thanks to [@shaharmor](https://github.com/shaharmor) for #2051.
 - Do not report owned process-tree cleanup as `observed` when a detached descendant remains active after the owned process group exits. Thanks to [@rtbe](https://github.com/rtbe) for #2053.
 - Ignore verbs inside filenames and path-like tokens when classifying implementation intent, so artifact names such as `daily-update.mp3` do not create an implementation obligation. Thanks to [@SiebertLanhove](https://github.com/SiebertLanhove) for #2039.
 - Accept the boolean `fast` field on async recovery descriptors so a setting the writer persists can round-trip through follow-up. Thanks to [@isty2e](https://github.com/isty2e) for #2045.
