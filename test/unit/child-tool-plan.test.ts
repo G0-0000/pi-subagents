@@ -158,7 +158,8 @@ describe("production launch path supplies hostAvailableBuiltins", () => {
 		const mockPi = {
 			getAllTools: () => [
 				{ name: "read", sourceInfo: { source: "builtin" } },
-				{ name: "bash", sourceInfo: { source: "builtin" } },
+				{ name: "bash", sourceInfo: { source: "auto" } },
+				{ name: "custom-auto-tool", sourceInfo: { source: "auto" } },
 				{ name: "custom-tool", sourceInfo: { source: "extension", path: "/ext/tool.ts" } },
 				{ name: "mcp-tool", sourceInfo: { source: "mcp" } },
 			],

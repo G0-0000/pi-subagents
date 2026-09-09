@@ -61,6 +61,7 @@ const FAST_MODE_ALLOWED_MODELS = new Set([
 	"openai-codex/gpt-5.6-sol",
 ]);
 const OPENAI_PROMPT_CACHE_KEY_MAX_LENGTH = 64;
+const PI_BUILTIN_TOOL_NAMES = new Set(["read", "bash", "powershell", "edit", "write", "grep", "find", "ls"]);
 
 export function deriveForkPromptCacheKey(parentSessionId: string | undefined): string | undefined {
 	const parent = parentSessionId?.trim();
@@ -313,7 +314,10 @@ export function getHostBuiltinToolNames(pi: Pick<ExtensionAPI, "getAllTools">): 
 	try {
 		const builtins = pi
 			.getAllTools()
-			.filter((tool) => (tool.sourceInfo as { source?: string } | undefined)?.source === "builtin")
+			.filter((tool) => {
+				const source = (tool.sourceInfo as { source?: string } | undefined)?.source;
+				return source === "builtin" || (source === "auto" && PI_BUILTIN_TOOL_NAMES.has(tool.name));
+			})
 			.map((tool) => tool.name);
 		return builtins.length > 0 ? builtins : undefined;
 	} catch {

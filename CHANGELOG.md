@@ -14,6 +14,7 @@
 - Document task-derived behavior labels for workflow launches in the built-in pi-subagents skill, including reviews and retained follow-ups.
 
 ### Fixed
+- Keep workflow child tool exposure aligned with advertised agent tools when auto-discovered extensions wrap Pi builtins, and relocate auto-selected extension-repo worktrees outside Pi's extension auto-discovery directory (#2059).
 - Run the child prompt filter before ambient extensions inspect the system prompt. This keeps provider bridges aligned with the final child-visible context while preserving intentional global-context and parent-only skill exclusions. Thanks to [@leftytennis](https://github.com/leftytennis) for #2043.
 - Send OpenCode session-routing headers on internal helper model calls so task arbitration, watchdog, and prompt audit requests keep the same provider session as ordinary Pi traffic. Thanks to [@IdrisGit](https://github.com/IdrisGit) for #2041.
 - Intersect agent frontmatter `tools:` with host-available builtins before spawning children, so hosts with restricted tool menus (e.g. Prime Agent's `ipython`-only set) reject unavailable tools at launch instead of after spawn. Thanks to [@BioInfo](https://github.com/BioInfo) for #2034.
