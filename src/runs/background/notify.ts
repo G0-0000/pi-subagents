@@ -943,7 +943,7 @@ export default function registerSubagentNotify(
 			details,
 			sessionId: result.sessionId,
 			completionOwnerId: result.completionOwnerId,
-			triggerTurn: result.triggerTurn !== false && scheduledCompletionTriggersTurn(result.scheduleOrigin, details.status),
+			triggerTurn: result.triggerTurn !== false && scheduledCompletionTriggersTurn(result.scheduleOrigin, details.status) && !(details.agent === "doc-keeper" && details.status === "completed"),
 			resolve,
 		};
 		if (notificationDebug.enabled) item.trace = traceIdentity(result);
