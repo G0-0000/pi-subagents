@@ -833,6 +833,10 @@ export function buildCompletionDetails(result: CompletionNotification): Subagent
 	};
 }
 
+// Completed runs of these agents never wake the main turn; their failures and
+// stopped runs still do. Add future keeper-style agents here.
+const SILENT_COMPLETED_AGENTS = new Set(["doc-keeper", "wiki-keeper"]);
+
 export default function registerSubagentNotify(
 	pi: Pick<ExtensionAPI, "events"> & Partial<Pick<ExtensionAPI, "on">> & Pick<ParentWake, "sendMessage">,
 	state: Pick<SubagentState, "currentSessionId" | "completionOwnerId">,
@@ -943,7 +947,7 @@ export default function registerSubagentNotify(
 			details,
 			sessionId: result.sessionId,
 			completionOwnerId: result.completionOwnerId,
-			triggerTurn: result.triggerTurn !== false && scheduledCompletionTriggersTurn(result.scheduleOrigin, details.status) && !(details.agent === "doc-keeper" && details.status === "completed"),
+			triggerTurn: result.triggerTurn !== false && scheduledCompletionTriggersTurn(result.scheduleOrigin, details.status) && !(SILENT_COMPLETED_AGENTS.has(details.agent) && details.status === "completed"),
 			resolve,
 		};
 		if (notificationDebug.enabled) item.trace = traceIdentity(result);
