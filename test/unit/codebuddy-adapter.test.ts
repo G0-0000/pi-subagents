@@ -245,6 +245,6 @@ describe("CodeBuddy adapter", () => {
 		assert.equal(status.adapter.id, "codebuddy");
 		assert.equal(status.adapter.executionMode, "one-shot-stdin");
 		const message = formatHerdrMachineRunnerUnsupported({ machine: "m1", agentName: "codebuddy", runnerType: "external-cli", adapter: "codebuddy" });
-		assert.match(message ?? "", /CodeBuddy runs on this machine only/);
+		assert.match(message ?? "", /external CLI agents \(including CodeBuddy\) run on this machine only/);
 	});
 });
