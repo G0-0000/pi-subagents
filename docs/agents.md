@@ -149,6 +149,41 @@ node --experimental-strip-types --import ./test/support/register-loader.mjs \
 
 Both smoke reports record `authentication: "existing-cli-required"`, `settingSources: "user"`, and `userSettingsTrust: "required"` without recording credential details. For read-only, confirm `terminalState` is `completed` and `writeCanaryExists` is `false`. For writer, confirm `terminalState` is `completed` and `writeCanaryMatches` is `true`. `durationMs` records cold process time. If authentication is missing or revoked, repair the normal local Claude Code login and rerun the smoke. Reports do not contain raw protocol output or credentials.
 
+The built-in `codebuddy` and `codebuddy-writer` profiles are the supported CodeBuddy CLI one-shot modes. Both require an installed CodeBuddy CLI (`codebuddy`, 2.161.0 or compatible semver) that is already authenticated through its normal local login under `~/.codebuddy`. Both adapters load user settings but exclude project and local settings, so user-level CodeBuddy settings are an operator-trusted prerequisite.
+
+| Profile | Access | Permission mode | Built-in tools |
+|---|---|---|---|
+| `codebuddy` | Handoff-only read-only advice | `plan` | none |
+| `codebuddy-writer` | Explicit workspace file edits | `acceptEdits` | `Read,Write,Edit,Glob,Grep` |
+
+Both adapters own `codebuddy -p` argv with stream JSON, strict empty MCP configuration, user-only setting sources, and no session persistence. CodeBuddy has no `--disable-slash-commands` or `--no-chrome` flags, so neither is passed. The writer mode does not include Bash or any permission bypass. User profiles cannot add argv. Selecting the code-owned `codebuddy-writer` adapter identity is the only way to opt into its write tools; the read-only adapter cannot be widened with user argv.
+
+Run it asynchronously:
+
+```text
+Use codebuddy to analyze this handoff without editing files.
+
+Use codebuddy-writer to make the requested file changes.
+```
+
+The adapter validates `codebuddy --version` and `codebuddy --help` only when a run launches. Discovery, list, status, and native Pi launches do not execute CodeBuddy or probe authentication. CodeBuddy only runs on the local machine: combining a CodeBuddy agent with a Herdr `machine:` fails before dispatch instead of misrouting the launch. JSONL, stderr, and stdout are untrusted. A run succeeds only after bounded valid JSONL contains exactly one successful terminal `result` with non-empty final text; CodeBuddy exits 0 even for execution errors, so the parser terminal state is the success signal. Missing or revoked local authentication, limit stops, malformed JSON, duplicate terminal results, and EOF before a terminal result fail closed.
+
+Maintainers can opt in to separate read-only and writer canaries:
+
+```bash
+PI_SUBAGENTS_CODEBUDDY_SMOKE=1 \
+PI_SUBAGENTS_CODEBUDDY_SMOKE_REPORT=/tmp/pi-subagents-codebuddy-smoke.json \
+node --experimental-strip-types --import ./test/support/register-loader.mjs \
+  --test test/integration/codebuddy-smoke.test.ts
+
+PI_SUBAGENTS_CODEBUDDY_WRITER_SMOKE=1 \
+PI_SUBAGENTS_CODEBUDDY_WRITER_SMOKE_REPORT=/tmp/pi-subagents-codebuddy-writer-smoke.json \
+node --experimental-strip-types --import ./test/support/register-loader.mjs \
+  --test test/integration/codebuddy-writer-smoke.test.ts
+```
+
+Both smoke reports record `authentication: "existing-cli-required"`, `settingSources: "user"`, and `userSettingsTrust: "required"` without recording credential details. For read-only, confirm `terminalState` is `completed` and `writeCanaryExists` is `false`. For writer, confirm `terminalState` is `completed` and `writeCanaryMatches` is `true`. Reports do not contain raw protocol output or credentials.
+
 #### Cursor CLI profiles
 
 The built-in `cursor-agent` and `cursor-agent-writer` profiles are the supported Cursor CLI one-shot modes. Both require an installed Cursor CLI and either `CURSOR_API_KEY` or an existing local login.
