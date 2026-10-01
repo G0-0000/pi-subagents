@@ -1762,7 +1762,7 @@ export type AgentRunnerConfig =
 	| { type: "pi" }
 	| {
 		type: "external-cli";
-		adapter?: "codex-exec" | "codex-exec-writer" | "claude-code" | "claude-code-writer" | "cursor-agent" | "cursor-agent-writer";
+		adapter?: "codex-exec" | "codex-exec-writer" | "claude-code" | "claude-code-writer" | "cursor-agent" | "cursor-agent-writer" | "codebuddy" | "codebuddy-writer";
 		command: string;
 		args?: string[];
 		promptDelivery?: "stdin";
@@ -1808,7 +1808,7 @@ export interface ExternalCliCapabilities {
 }
 
 export interface ExternalCliReceiptMetadata {
-	adapter: { id: "external-cli" | "codex-exec" | "codex-exec-writer" | "claude-code" | "claude-code-writer" | "cursor-agent" | "cursor-agent-writer" | "grok-build"; version: 1; executionMode: "one-shot-stdin" | "one-shot-prompt-file" };
+	adapter: { id: "external-cli" | "codex-exec" | "codex-exec-writer" | "claude-code" | "claude-code-writer" | "cursor-agent" | "cursor-agent-writer" | "codebuddy" | "codebuddy-writer" | "grok-build"; version: 1; executionMode: "one-shot-stdin" | "one-shot-prompt-file" };
 	capabilities: ExternalCliCapabilities;
 	machine?: ExternalCliMachineStatus;
 	safety?:

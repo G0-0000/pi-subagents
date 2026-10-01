@@ -68,6 +68,7 @@
 - Fleet reread and re-rendered the selected transcript every 750 ms even when it had not changed, which took hundreds of milliseconds per refresh for a long transcript. It now reuses the rendered transcript until the file, selection, width or tool view changes. ([#2705](https://github.com/nicobailon/pi-subagents/issues/2705))
 - A Herdr-placed Pi child's bridge kept every frame it received, so a healthy run failed and started reconnecting after its 1,024th frame. Frames are now released once the session has taken them. ([#2706](https://github.com/nicobailon/pi-subagents/issues/2706))
 - Two inspector opens for the same run or child at once, for example from Fleet and a tool call or from two Pi processes, could each open a pane and save a binding, so one pane could no longer be reached by `inspector.status` or `inspector.close`, and a close racing an open could miss the pane the open created. Open and close for the same run or child now wait for each other, across processes too. ([#2727](https://github.com/nicobailon/pi-subagents/issues/2727))
+- Built-in `codebuddy` and `codebuddy-writer` profiles for the CodeBuddy CLI (`codebuddy`, bare semver 2.161.0+). Both mirror the Claude Code one-shot contract: stream JSON over stdin, read-only `plan`/no-tools and `acceptEdits`/`Read,Write,Edit,Glob,Grep` writer modes, strict empty MCP configuration, user-only setting sources, and no session persistence. CodeBuddy runs on the local machine only; combining it with a Herdr `machine:` fails before dispatch.
 
 ## [0.76.1] - 2026-10-05
 

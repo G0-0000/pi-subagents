@@ -3,7 +3,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ExternalProcessStatus, HerdrMachineReference } from "../../shared/types.ts";
 import { getAgentDir, getProjectConfigDir } from "../../shared/utils.ts";
-import { CODE_OWNED_EXTERNAL_CLI_ADAPTER_IDS, type CodeOwnedExternalCliAdapterId } from "./external-cli-contract.ts";
 import type { runExternalCli } from "./external-cli-runner.ts";
 export { shellQuoteRemote as shellQuote } from "./herdr-connection.ts";
 
@@ -20,7 +19,20 @@ const MAX_MACHINE_NAME_LENGTH = 128;
 const HERDR_MACHINE_LIST_TIMEOUT_MS = 7_500;
 const MAX_HERDR_MACHINE_LIST_BYTES = 1024 * 1024;
 const CONTROL_CHARS = /[\u0000-\u001f\u007f]/u;
-const SUPPORTED_MACHINE_ADAPTERS = new Set<string>(CODE_OWNED_EXTERNAL_CLI_ADAPTER_IDS);
+/**
+ * Herdr saved-machine placement only covers adapters with a remote machine
+ * implementation. CodeBuddy is local-only for now: registering it in
+ * CODE_OWNED_EXTERNAL_CLI_ADAPTER_IDS must not silently open the machine gate
+ * (herdr-external-adapters would otherwise misroute it as codex).
+ */
+const SUPPORTED_MACHINE_ADAPTERS = new Set<string>([
+	"codex-exec",
+	"codex-exec-writer",
+	"claude-code",
+	"claude-code-writer",
+	"cursor-agent",
+	"cursor-agent-writer",
+]);
 /** The local ssh process gets only what ssh itself needs; remote runs use the machine's own credentials. */
 export const HERDR_SSH_ENV_ALLOWLIST = ["PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "SSH_AUTH_SOCK"] as const;
 
@@ -247,7 +259,7 @@ export function formatHerdrMachineRunnerUnsupported(input: {
 		return `Agent '${input.agentName}' requested machine '${input.machine}', but this runner cannot use pane-native Herdr placement. Use native Pi or a built-in Claude, Codex, or Cursor profile.`;
 	}
 	if (input.runnerType === "external-cli" && (input.adapter === undefined || !SUPPORTED_MACHINE_ADAPTERS.has(input.adapter))) {
-		return `Agent '${input.agentName}' requested machine '${input.machine}', but generic external-cli commands cannot be remote-wrapped safely. Use claude-code, claude-code-writer, codex-exec, codex-exec-writer, cursor-agent, or cursor-agent-writer.`;
+		return `Agent '${input.agentName}' requested machine '${input.machine}', but CodeBuddy runs on this machine only and generic external-cli commands cannot be remote-wrapped safely. Use claude-code, claude-code-writer, codex-exec, codex-exec-writer, cursor-agent, or cursor-agent-writer.`;
 	}
 	if (input.worktree === true) return `Agent '${input.agentName}' requested machine '${input.machine}', but managed worktrees are local git operations and cannot be combined with a Herdr saved machine.`;
 	if (process.platform === "win32") return "Herdr saved-machine pane transport requires hardened OpenSSH StreamLocal forwarding, which is not supported from a Windows host yet.";
