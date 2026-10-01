@@ -259,7 +259,7 @@ export function formatHerdrMachineRunnerUnsupported(input: {
 		return `Agent '${input.agentName}' requested machine '${input.machine}', but this runner cannot use pane-native Herdr placement. Use native Pi or a built-in Claude, Codex, or Cursor profile.`;
 	}
 	if (input.runnerType === "external-cli" && (input.adapter === undefined || !SUPPORTED_MACHINE_ADAPTERS.has(input.adapter))) {
-		return `Agent '${input.agentName}' requested machine '${input.machine}', but CodeBuddy runs on this machine only and generic external-cli commands cannot be remote-wrapped safely. Use claude-code, claude-code-writer, codex-exec, codex-exec-writer, cursor-agent, or cursor-agent-writer.`;
+		return `Agent '${input.agentName}' requested machine '${input.machine}', but external CLI agents (including CodeBuddy) run on this machine only and cannot be remote-wrapped safely. Use claude-code, claude-code-writer, codex-exec, codex-exec-writer, cursor-agent, or cursor-agent-writer.`;
 	}
 	if (input.worktree === true) return `Agent '${input.agentName}' requested machine '${input.machine}', but managed worktrees are local git operations and cannot be combined with a Herdr saved machine.`;
 	if (process.platform === "win32") return "Herdr saved-machine pane transport requires hardened OpenSSH StreamLocal forwarding, which is not supported from a Windows host yet.";
