@@ -31,6 +31,8 @@ export const CODE_OWNED_EXTERNAL_CLI_ADAPTER_IDS = [
 	"claude-code-writer",
 	"cursor-agent",
 	"cursor-agent-writer",
+	"codebuddy",
+	"codebuddy-writer",
 ] as const;
 export type CodeOwnedExternalCliAdapterId = typeof CODE_OWNED_EXTERNAL_CLI_ADAPTER_IDS[number];
 
@@ -45,6 +47,7 @@ const RESERVED_READ_ONLY_ADAPTERS = [
 	{ name: "claude-code", writer: "claude-code-writer", access: "file-write" },
 	{ name: "codex-exec", writer: "codex-exec-writer", access: "workspace-write" },
 	{ name: "cursor-agent", writer: "cursor-agent-writer", access: "workspace-write" },
+	{ name: "codebuddy", writer: "codebuddy-writer", access: "file-write" },
 ] as const;
 
 export function validateCodeOwnedProfileRunner(
@@ -73,6 +76,8 @@ export const EXTERNAL_CLI_ADAPTER_SAFETY = {
 	"claude-code-writer": { access: "workspace-write", authentication: "existing-cli-required", permissionMode: "acceptEdits", tools: "Read,Write,Edit,Glob,Grep", mcp: "empty-strict", settingSources: "user", userSettingsTrust: "required", sessionPersistence: false },
 	"cursor-agent": { access: "read-only", authentication: "cursor-api-key-or-existing-login", mode: "ask", sandbox: "enabled", workspaceTrust: "existing-required", sessionReuse: false },
 	"cursor-agent-writer": { access: "workspace-write", authentication: "cursor-api-key-or-existing-login", mode: "print", sandbox: "enabled", workspaceTrust: "existing-required", sessionReuse: false },
+	"codebuddy": { access: "read-only", authentication: "existing-cli-required", permissionMode: "plan", tools: "none", mcp: "empty-strict", settingSources: "user", userSettingsTrust: "required", sessionPersistence: false },
+	"codebuddy-writer": { access: "workspace-write", authentication: "existing-cli-required", permissionMode: "acceptEdits", tools: "Read,Write,Edit,Glob,Grep", mcp: "empty-strict", settingSources: "user", userSettingsTrust: "required", sessionPersistence: false },
 } as const satisfies Record<CodeOwnedExternalCliAdapterId, Record<string, string | boolean>>;
 
 export function parseExternalCliCapabilityNarrowing(value: unknown, label: string): ExternalCliCapabilityNarrowing | undefined {
