@@ -8,17 +8,16 @@ import { runExternalCli } from "../../src/runs/shared/external-cli-runner.ts";
 
 const enabled = process.env.PI_SUBAGENTS_CODEBUDDY_WRITER_SMOKE === "1";
 
-// The test harness isolates HOME, which hides the operator's CodeBuddy login
-// state (~/.codebuddy). Restore the real login HOME for the spawned CLI so the
-// smoke exercises the authenticated binary; canary files still live under the
-// isolated temp cwd.
-const homeDir = process.env.HOME ?? os.homedir();
-if (!fs.existsSync(path.join(homeDir, ".codebuddy"))) {
-	const realHome = os.userInfo().homedir;
-	if (fs.existsSync(path.join(realHome, ".codebuddy"))) process.env.HOME = realHome;
-}
-
 test("maintainer CodeBuddy writer smoke", { skip: enabled ? undefined : "set PI_SUBAGENTS_CODEBUDDY_WRITER_SMOKE=1" }, async () => {
+	// The test harness isolates HOME, which hides the operator's CodeBuddy login
+	// state (~/.codebuddy). Restore the real login HOME for the spawned CLI so the
+	// smoke exercises the authenticated binary; canary files still live under the
+	// isolated temp cwd.
+	const homeDir = process.env.HOME ?? os.homedir();
+	if (!fs.existsSync(path.join(homeDir, ".codebuddy"))) {
+		const realHome = os.userInfo().homedir;
+		if (fs.existsSync(path.join(realHome, ".codebuddy"))) process.env.HOME = realHome;
+	}
 	const reportPath = process.env.PI_SUBAGENTS_CODEBUDDY_WRITER_SMOKE_REPORT;
 	assert.ok(reportPath, "PI_SUBAGENTS_CODEBUDDY_WRITER_SMOKE_REPORT is required");
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-codebuddy-writer-smoke-"));
