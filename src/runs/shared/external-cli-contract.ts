@@ -31,6 +31,8 @@ export const CODE_OWNED_EXTERNAL_CLI_ADAPTER_IDS = [
 	"claude-code-writer",
 	"cursor-agent",
 	"cursor-agent-writer",
+	"codebuddy",
+	"codebuddy-writer",
 ] as const;
 export type CodeOwnedExternalCliAdapterId = typeof CODE_OWNED_EXTERNAL_CLI_ADAPTER_IDS[number];
 
@@ -45,6 +47,7 @@ const RESERVED_READ_ONLY_ADAPTERS = [
 	{ name: "claude-code", writer: "claude-code-writer", access: "file-write" },
 	{ name: "codex-exec", writer: "codex-exec-writer", access: "workspace-write" },
 	{ name: "cursor-agent", writer: "cursor-agent-writer", access: "workspace-write" },
+	{ name: "codebuddy", writer: "codebuddy-writer", access: "file-write" },
 ] as const;
 
 export function validateCodeOwnedProfileRunner(
@@ -88,6 +91,8 @@ export function resolveExternalCliRunnerStatus(input: {
 	const codexExecWriter = input.adapter === "codex-exec-writer";
 	const claudeCode = input.adapter === "claude-code";
 	const claudeCodeWriter = input.adapter === "claude-code-writer";
+	const codebuddy = input.adapter === "codebuddy";
+	const codebuddyWriter = input.adapter === "codebuddy-writer";
 	const cursorAgent = input.adapter === "cursor-agent";
 	const cursorAgentWriter = input.adapter === "cursor-agent-writer";
 	const cursor = cursorAgent || cursorAgentWriter;
@@ -102,6 +107,8 @@ export function resolveExternalCliRunnerStatus(input: {
 		...(codexExecWriter ? { safety: { access: "workspace-write" as const, sandbox: "workspace-write" as const, approvalPolicy: "never" as const, ephemeral: true as const } } : {}),
 		...(claudeCode ? { safety: { access: "read-only" as const, authentication: "existing-cli-required" as const, permissionMode: "plan" as const, tools: "none" as const, mcp: "empty-strict" as const, settingSources: "user" as const, userSettingsTrust: "required" as const, sessionPersistence: false as const } } : {}),
 		...(claudeCodeWriter ? { safety: { access: "workspace-write" as const, authentication: "existing-cli-required" as const, permissionMode: "acceptEdits" as const, tools: "Read,Write,Edit,Glob,Grep" as const, mcp: "empty-strict" as const, settingSources: "user" as const, userSettingsTrust: "required" as const, sessionPersistence: false as const } } : {}),
+		...(codebuddy ? { safety: { access: "read-only" as const, authentication: "existing-cli-required" as const, permissionMode: "plan" as const, tools: "none" as const, mcp: "empty-strict" as const, settingSources: "user" as const, userSettingsTrust: "required" as const, sessionPersistence: false as const } } : {}),
+		...(codebuddyWriter ? { safety: { access: "workspace-write" as const, authentication: "existing-cli-required" as const, permissionMode: "acceptEdits" as const, tools: "Read,Write,Edit,Glob,Grep" as const, mcp: "empty-strict" as const, settingSources: "user" as const, userSettingsTrust: "required" as const, sessionPersistence: false as const } } : {}),
 		...(cursorAgent ? { safety: { access: "read-only" as const, authentication: "cursor-api-key-or-existing-login" as const, mode: "ask" as const, sandbox: "enabled" as const, workspaceTrust: "existing-required" as const, sessionReuse: false as const } } : {}),
 		...(cursorAgentWriter ? { safety: { access: "workspace-write" as const, authentication: "cursor-api-key-or-existing-login" as const, mode: "print" as const, sandbox: "enabled" as const, workspaceTrust: "existing-required" as const, sessionReuse: false as const } } : {}),
 		...(input.machine ? { machine: input.machine } : {}),
