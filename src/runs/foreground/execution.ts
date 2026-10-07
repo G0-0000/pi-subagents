@@ -61,7 +61,7 @@ import { resolvePermissionRules } from "../shared/permissions.ts";
 import { applyThinkingSuffix, deriveForkPromptCacheKey } from "../shared/child-tool-plan.ts";
 import { deriveChildSessionName } from "../../shared/child-session-name.ts";
 import { assertAgentAllowedByCapabilityCeiling, intersectSubagentCapabilityCeilings, resolveCurrentSubagentCapabilityCeiling } from "../shared/capability-ceiling.ts";
-import { resolveEffectiveThinking } from "../../shared/model-info.ts";
+import { qualifyModelWithProvider, resolveEffectiveThinking } from "../../shared/model-info.ts";
 import { assertThinkingWithinCeiling, intersectThinkingCeilings } from "../../shared/thinking-ceiling.ts";
 import { formatStructuredOutputRejectionError, MISSING_STRUCTURED_ACCEPTANCE_REPORT_ERROR, MISSING_STRUCTURED_OUTPUT_CALL_ERROR } from "../shared/structured-output.ts";
 import { formatMidToolExitError, isOrdinaryToolForMidToolExit } from "../shared/process-signal.ts";
@@ -1108,8 +1108,9 @@ async function runSingleAttempt(
 					}
 					projectCompleteUsage();
 					if (evt.message.model) {
-						progress.model = evt.message.model;
-						if (!result.model) result.model = evt.message.model;
+						const observedModel = qualifyModelWithProvider(evt.message.model, evt.message.provider, options.availableModels) ?? evt.message.model;
+						progress.model = observedModel;
+						if (!result.model) result.model = observedModel;
 						if (expectedModelForVerification && !hasToolCall) {
 							const modelVerificationError = formatSubagentModelVerificationError(expectedModelForVerification, evt.message.model, options.availableModels, options.modelResponseAliases, session?.virtualModelId);
 							if (modelVerificationError && !result.error) result.error = modelVerificationError;

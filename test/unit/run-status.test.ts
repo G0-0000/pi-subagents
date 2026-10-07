@@ -430,10 +430,9 @@ describe("async run status inspection", () => {
 			assert.match(text, /Error: top-level async status error/);
 			assert.match(text, /Progress: 2 agents running · 0\/3 done/);
 			assert.match(text, new RegExp(`Output: ${runOutputPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
-			assert.match(text, /Agent 1\/3: reviewer: Inspect the first result running \(gpt-5\.5 · thinking high\)/);
-			assert.match(text, /Agent 2\/3: reviewer running \(claude-haiku-4-5 · thinking low\)/);
+			assert.match(text, /Agent 1\/3: reviewer: Inspect the first result running \(openai-codex\/gpt-5\.5 · thinking high\)/);
+			assert.match(text, /Agent 2\/3: reviewer running \(anthropic\/claude-haiku-4-5 · thinking low\)/);
 			assert.match(text, /Agent 3\/3: reviewer pending/);
-			assert.doesNotMatch(text, /openai-codex\/gpt-5\.5/);
 			assert.match(text, new RegExp(`  Output: ${firstStepOutputPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
 			assert.match(text, new RegExp(`  Output: ${secondStepOutputPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
 			assert.doesNotMatch(text, /Step 1: reviewer/);
@@ -1484,8 +1483,8 @@ describe("async run status inspection", () => {
 
 			const result = inspectSubagentStatus({ id: "workflow-parent" }, { asyncDirRoot: asyncRoot, resultsDir: path.join(root, "results") });
 			const text = textContent(result);
-			assert.match(text, /Workflow child review: reviewer failed \(gpt-5\.5 · thinking high\)/);
-			assert.match(text, /Workflow child write: worker paused \(claude-sonnet-5 · thinking low\)/);
+			assert.match(text, /Workflow child review: reviewer failed \(openai-codex\/gpt-5\.5 · thinking high\)/);
+			assert.match(text, /Workflow child write: worker paused \(anthropic\/claude-sonnet-5 · thinking low\)/);
 			assert.match(text, /Revive workflow child 'review': subagent\(\{ action: "resume", id: "child-review", message: "\.\.\." \}\)/);
 			assert.match(text, /Revive workflow child 'write': subagent\(\{ action: "resume", id: "child-write", message: "\.\.\." \}\)/);
 			assert.doesNotMatch(text, /id: "workflow-parent", index:/);

@@ -9,6 +9,10 @@
 - Fleet's `Enter`/`H` inspector needed Herdr or Ghostty, so tmux users had to write their own provider. A bundled `tmux` inspector now opens the read-only inspector in a split pane of the current tmux window, with status and close support. Thanks to [@tobymao](https://github.com/tobymao) for the plugin. ([#2719](https://github.com/nicobailon/pi-subagents/pull/2719))
 - No setting showed each active background run on one line in the async widget under the editor: while the terminal has room, the widget gives each run two or more lines, and `asyncWidgetCollapsed: true` folds it to a count that names no run. Set `asyncWidgetLayout: "rows"` to show a header and one line per run; a header click still folds the widget, and Pi's expand key still shows the details. Thanks to [@pwguler](https://github.com/pwguler) for [#2738](https://github.com/nicobailon/pi-subagents/pull/2738).
 
+### Changed
+
+- Subagent model displays (Fleet, the async widget, run status, nested renders and result cards) showed only the model id, so two providers or logins serving the same model looked identical. They now show `provider/model`. Thanks to [@IdrisGit](https://github.com/IdrisGit) for [#2734](https://github.com/nicobailon/pi-subagents/pull/2734).
+
 ### Fixed
 
 - A message the operator typed while a blocking `bg_wait` was open sat in Pi's queue until the wait ended, which could take the whole wait window (30 minutes by default). A steer or follow-up from the operator now ends the wait with a non-error `user_input` result that lists the work still active; the work keeps running. Messages sent by extensions do not end the wait. Thanks to @nuzayets for #2736.

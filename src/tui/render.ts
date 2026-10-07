@@ -3127,7 +3127,7 @@ function renderSingleCompact(
 	const width = getTermWidth() - 4;
 	const detailIndent = mainWindowIndent(layout, 1);
 	const continuationIndent = mainWindowIndent(layout, 2) + (layout.horizontalSpacing > 0 ? " " : "");
-	const modelDisplay = modelThinkingBadge(theme, r.model ?? r.progress?.model, r.thinking ?? r.progress?.thinking);
+	const modelDisplay = modelThinkingBadge(theme, r.progress?.model ?? r.model, r.thinking ?? r.progress?.thinking);
 	c.addChild(new Text(truncLine(`${resultGlyph(r, output, theme, isRunning, undefined, frame)} ${theme.fg("toolTitle", theme.bold(foregroundSingleDisplayName(r)))}${modelDisplay}${contextBadge}${stats ? ` ${theme.fg("dim", "·")} ${stats}` : ""}`, width), 0, 0));
 
 	if (isRunning && r.progress) {
@@ -3386,7 +3386,7 @@ function renderMultiCompact(d: Details, theme: Theme, layout: MainWindowRenderLa
 		const pendingLabel = rPending ? ` ${theme.fg("dim", "· pending")}` : "";
 		const stepLabel = entry.rowLabel;
 		const rowProgressModel = rProg && "status" in rProg ? rProg : undefined;
-		const rowModelDisplay = modelThinkingBadge(theme, r.model ?? rowProgressModel?.model, r.thinking ?? rowProgressModel?.thinking);
+		const rowModelDisplay = modelThinkingBadge(theme, rowProgressModel?.model ?? r.model, r.thinking ?? rowProgressModel?.thinking);
 		const labelPrefix = stepLabel ? `${stepLabel}: ` : "";
 		const line = `${glyph} ${labelPrefix}${themeBold(theme, agentName)}${contextModeBadge(theme, r.context)}${rowModelDisplay}${stepStats ? ` ${theme.fg("dim", "·")} ${stepStats}` : ""}${pendingLabel}`;
 		c.addChild(new Text(truncLine(`${rowIndent}${line}`, width), 0, 0));
@@ -3587,7 +3587,7 @@ export function renderSubagentResult(
 		if (r.skillsWarning) {
 			c.addChild(new Text(fit(theme.fg("warning", `Warning: ${r.skillsWarning}`)), 0, 0));
 		}
-		c.addChild(new Text(fit(theme.fg("dim", formatUsage(r.usage, r.model))), 0, 0));
+		c.addChild(new Text(fit(theme.fg("dim", formatUsage(r.usage, r.progress?.model ?? r.model))), 0, 0));
 		if (r.sessionFile) {
 			c.addChild(new Text(fit(theme.fg("dim", `Session: ${shortenPath(r.sessionFile)}`)), 0, 0));
 		}
@@ -3733,7 +3733,7 @@ export function renderSubagentResult(
 		const resultOutput = getSingleResultOutput(r);
 		const rowPresentation = styledResultPresentation(resultPresentation(r, resultOutput, rRunning, progressRunningSeed(rProg), frame), theme);
 		const stats = rProg ? ` | ${rProg.toolCount} tools, ${formatDuration(rProg.durationMs)}` : "";
-		const modelDisplay = modelThinkingBadge(theme, r.model ?? rProg?.model, r.thinking ?? rProg?.thinking);
+		const modelDisplay = modelThinkingBadge(theme, rProg?.model ?? r.model, r.thinking ?? rProg?.thinking);
 		const stepLabel = entry.rowLabel;
 		const contextBadge = contextModeBadge(theme, r.context);
 		const labelPrefix = stepLabel ? `${stepLabel}: ` : "";

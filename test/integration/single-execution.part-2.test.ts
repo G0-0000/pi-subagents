@@ -2637,6 +2637,28 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 		assert.equal(result.model, "anthropic/claude-sonnet-4");
 	});
 
+	it("qualifies a foreground child's reported model with its provider", async () => {
+		mockPi.onCall({
+			jsonl: [{
+				type: "message_end",
+				message: {
+					role: "assistant",
+					content: [{ type: "text", text: "Done" }],
+					provider: "anthropic",
+					model: "claude-haiku-4-5",
+					stopReason: "stop",
+					usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, cost: { total: 0.001 } },
+				},
+			}],
+		});
+		// No agent model is configured, so result.model starts unset and is taken
+		// from the first assistant message, which reports the model id alone.
+		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Task", { acceptance: false });
+
+		assert.equal(result.exitCode, 0);
+		assert.equal(result.model, "anthropic/claude-haiku-4-5");
+	});
+
 	it("fails when a configured provider-qualified model starts on a different child model", async () => {
 		mockPi.onCall({ jsonl: [events.assistantMessage("wrong provider", "openai-codex/gpt-5.6-sol")] });
 		const agents = [makeAgent("echo", { model: "opencode-go/ox-alpha-free:max" })];

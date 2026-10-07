@@ -539,7 +539,13 @@ describe("native subagent fleet", () => {
 				{ asyncDirRoot: root, resultsDir: path.join(root, "results"), refreshMs: 60_000, markdownTheme },
 			);
 			try {
-				assert.ok(component.render(100).some((line) => line.includes("gpt-5.5 · thinking high")));
+				// The provider-qualified label wraps across rows in the 61-column detail pane, so
+				// reassemble the detail column before asserting the model and thinking metadata.
+				const detail = component.render(100)
+					.map((line) => line.split("│")[2] ?? "")
+					.join(" ")
+					.replace(/\s+/g, " ");
+				assert.ok(detail.includes("openai-codex/gpt-5.5 · thinking high"));
 			} finally {
 				component.dispose();
 			}
@@ -1374,7 +1380,7 @@ describe("native subagent fleet", () => {
 				assert.ok(lines.some((line) => line.includes("worker")));
 				assert.ok(lines.some((line) => line.includes("reviewer")));
 				assert.ok(lines.some((line) => line.includes("foreground · live")));
-				assert.ok(lines.some((line) => line.includes("live-model · thinking high")));
+				assert.ok(lines.some((line) => line.includes("provider/live-model · thinking high")));
 				assert.ok(lines.every((line) => !line.includes("Implement the active task") && !line.includes("Review the active task")));
 				assert.ok(lines.some((line) => line.includes("Conversation") && line.includes("assistant response")));
 				assert.ok(lines.some((line) => line.includes("Worker live result")));
@@ -1459,7 +1465,7 @@ describe("native subagent fleet", () => {
 						const lines = component.render(100);
 						assert.ok(lines.some((line) => line.includes(expected)), `missing ${expected}`);
 						if (initialKey.startsWith("foreground-recent:")) {
-							assert.ok(lines.some((line) => line.includes("recent-model · thinking xhigh")));
+							assert.ok(lines.some((line) => line.includes("provider/recent-model · thinking xhigh")));
 						}
 					} finally {
 						component.dispose();
@@ -1618,7 +1624,7 @@ describe("native subagent fleet", () => {
 			const lines = component.render(90);
 			const selectedLine = lines.find((line) => line.includes("›"));
 			assert.ok(selectedLine?.includes("run-work"), `unexpected selected row: ${selectedLine}`);
-			assert.ok(lines.some((line) => line.includes("Model: raw-model · thinking medium")));
+			assert.ok(lines.some((line) => line.includes("Model: provider/raw-model · thinking medium")));
 		} finally {
 			component.dispose();
 		}
@@ -1631,7 +1637,7 @@ describe("native subagent fleet", () => {
 			{ initialKey: "foreground-recent:run-recent:0", refreshMs: 60_000 },
 		);
 		try {
-			assert.ok(recentComponent.render(90).some((line) => line.includes("Model: recent-raw-model · thinking xhigh")));
+			assert.ok(recentComponent.render(90).some((line) => line.includes("Model: provider/recent-raw-model · thinking xhigh")));
 		} finally {
 			recentComponent.dispose();
 		}
