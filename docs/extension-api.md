@@ -141,6 +141,20 @@ Capability advertisements on `ping`:
 
 Structured delegation progress updates carry `runId` as soon as foreground execution allocates it, so a caller can retain the package-owned revival target even if its own tool turn is interrupted before the terminal response. Foreground `details.results[]` rows also include a numeric `index` that is unique within the run and stable across partial progress snapshots and the final result; use `(runId, index)` instead of row position to correlate single, counted parallel, and chain children.
 
+### Direct async launch correlation
+
+Direct async runs retain their originating `toolCallId` in status and result
+artifacts. After a lost RPC spawn reply, request `status` with
+`id: "rpc-spawn-<original-requestId>"`. The raw request UUID is not a run ID.
+Default targeted replies expose the resolved `runId` and retained `toolCallId`
+in `data.details`; older artifacts can omit the latter.
+
+Lookup uses the existing run indexes and retained artifacts. Terminal indexing
+keeps the alias after result delivery while the run's status is retained.
+Correlation is not idempotent spawn: multiple runs with one alias are ambiguous, and missing or
+expired evidence never proves that execution did not start. Do not redispatch
+on that basis. Existing ownership checks remain unchanged.
+
 ### Fleet status DTO
 
 When `ping.capabilities.fleetStatus` is `{ version: 1 }`, successful `status` replies include `data.fleet`: `{ version: 1, entries, totalActive, omitted }`.
