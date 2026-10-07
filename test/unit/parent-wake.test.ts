@@ -9,7 +9,9 @@ import { Type } from "typebox";
 import registerSubagentExtension from "../../src/extension/index.ts";
 import { currentCompletionOwnerId } from "../../src/shared/completion-owner.ts";
 import { createParentWake, PARENT_WAKE_TEXT } from "../../src/shared/parent-wake.ts";
-import { SUBAGENT_ASYNC_COMPLETE_EVENT } from "../../src/shared/types.ts";
+import { createNativeSupervisorChannel } from "../../src/intercom/native-supervisor-channel.ts";
+import registerSubagentNotify from "../../src/runs/background/notify.ts";
+import { SUBAGENT_ASYNC_COMPLETE_EVENT, type SubagentState } from "../../src/shared/types.ts";
 
 function createHarness(sessionManager: { getSessionId(): string } = SessionManager.inMemory()) {
 	const calls: unknown[][] = [];
@@ -143,7 +145,7 @@ it("abandons a real SDK wake that an input handler consumes", { timeout: 30_000 
 	}
 });
 
-it("starts an idle parent's completion run through before_agent_start, so it keeps hook-set prompt sections", { timeout: 30_000 }, async () => {
+for (const emptyResponse of [false, true]) it(`starts an idle parent's completion run (${emptyResponse ? "empty response" : "tool response"}) through before_agent_start, so it keeps hook-set prompt sections`, { timeout: 30_000 }, async () => {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-parent-wake-sdk-"));
 	const agentDir = path.join(root, "agent");
 	fs.mkdirSync(agentDir);
@@ -154,7 +156,7 @@ it("starts an idle parent's completion run through before_agent_start, so it kee
 	const faux = fauxProvider({ provider: "parent-wake", models: [{ id: "local" }], tokensPerSecond: 100_000 });
 	faux.setResponses([
 		() => fauxAssistantMessage("Started the child."),
-		() => fauxAssistantMessage(fauxToolCall("probe_tool", {}), { stopReason: "toolUse" }),
+		() => emptyResponse ? fauxAssistantMessage("") : fauxAssistantMessage(fauxToolCall("probe_tool", {}), { stopReason: "toolUse" }),
 		() => fauxAssistantMessage("Handled the child result."),
 	]);
 	const prompts: string[] = [];
@@ -198,6 +200,170 @@ it("starts an idle parent's completion run through before_agent_start, so it kee
 		assert.equal(session.getLastAssistantText(), "Handled the child result.");
 	} finally {
 		if (session) await (session.extensionRunner as unknown as { emit(event: unknown): Promise<unknown> }).emit({ type: "session_shutdown", reason: "quit" });
+		session?.dispose();
+		if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+		else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+});
+
+it("composes prior drafts, unresolved supervisor and empty completion safeguards through real SDK", { timeout: 30_000 }, async () => {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-settle-compose-"));
+	const agentDir = path.join(root, "agent");
+	const channelDir = path.join(root, "channel");
+	fs.mkdirSync(agentDir);
+	fs.mkdirSync(path.join(channelDir, "requests"), { recursive: true });
+	const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+	process.env.PI_CODING_AGENT_DIR = agentDir;
+	const manager = SessionManager.inMemory(root);
+	const sessionId = manager.getSessionId();
+	const requestFile = path.join(channelDir, "requests", "ask.json");
+	fs.writeFileSync(requestFile, JSON.stringify({
+		type: "subagent.supervisor.request", id: "ask", createdAt: Date.now(),
+		reason: "need_decision", message: "May child proceed?", expectsReply: true,
+		orchestratorSessionId: sessionId, runId: "child", agent: "worker", childIndex: 0,
+	}));
+	const faux = fauxProvider({ provider: "settle-compose", models: [{ id: "local" }], tokensPerSecond: 100_000 });
+	let responses = 0;
+	faux.setResponses(Array.from({ length: 3 }, () => () => { responses++; return fauxAssistantMessage(""); }));
+	let channel: ReturnType<typeof createNativeSupervisorChannel>;
+	let notifier: ReturnType<typeof registerSubagentNotify>;
+	const boundaries: string[][] = [];
+	let observeBoundary = () => {};
+	const runnable: boolean[] = [];
+	const settingsManager = SettingsManager.inMemory({});
+	const resourceLoader = new DefaultResourceLoader({
+		cwd: root, agentDir, settingsManager,
+		noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
+		extensionFactories: [(api) => {
+			api.registerProvider(faux.provider);
+			api.on("agent_before_settle", (event) => {
+				runnable.push(event.context.canContinue);
+				return { entries: [...event.entries, { type: "custom", customType: "prior-draft", data: {} }] };
+			});
+			const state = { currentSessionId: sessionId, supervisorOwnerSessionId: sessionId,
+				completionOwnerId: "owner", asyncJobs: new Map(), foregroundControls: new Map() } as SubagentState;
+			// Append notices without launching another run; explicit prompt below owns this run.
+			const parentWake = { sendMessage(message: Parameters<typeof api.sendMessage>[0]) {
+				api.sendMessage(message, { triggerTurn: false }); return true;
+			} };
+			channel = createNativeSupervisorChannel(api, state, { parentWake, getChannelDirs: () => ({ dirs: [channelDir] }) });
+			notifier = registerSubagentNotify({ events: api.events, on: api.on, ...parentWake }, state, { batchConfig: { enabled: false } });
+			api.on("session_start", () => { notifier.bindSession(manager); channel.start(); });
+			observeBoundary = () => { api.on("agent_before_settle", (event) => {
+				boundaries.push(event.entries.map(entry => "customType" in entry ? entry.customType : entry.type));
+			}); };
+		}],
+	});
+	let session: Awaited<ReturnType<typeof createAgentSession>>["session"] | undefined;
+	try {
+		await resourceLoader.reload();
+		const modelRuntime = await ModelRuntime.create({ authPath: path.join(agentDir, "auth.json"), modelsPath: path.join(agentDir, "models.json"), allowModelNetwork: false });
+		({ session } = await createAgentSession({ cwd: root, agentDir, settingsManager, resourceLoader, modelRuntime, model: faux.getModel("local"), sessionManager: manager, noTools: "builtin" }));
+		await session.bindExtensions({});
+		assert.equal(await notifier!.deliver({ id: "completion", sessionId, completionOwnerId: "owner", success: true, summary: "Done" }), true);
+		observeBoundary();
+		await session.prompt("Inspect pending updates.");
+		assert.equal(runnable[0], false, "empty assistant output leaves pre-draft continuation unavailable");
+		assert.equal(responses, 3, "one bounded reminder per safeguard, then settle");
+		assert.deepEqual(boundaries, [
+			["prior-draft", "subagent-supervisor-unanswered"],
+			["prior-draft", "subagent-supervisor-blocked", "subagent-completion-unanswered"],
+			["prior-draft", "subagent-completion-unhandled"],
+		]);
+		assert.equal(channel!.pending.size, 1);
+		assert.equal(fs.existsSync(requestFile), true, "safeguard never answers or deletes unresolved ask");
+		const customTypes = manager.getBranch().filter(entry => entry.type === "custom_message").map(entry => entry.customType);
+		assert.ok(customTypes.includes("subagent-supervisor-blocked"));
+		assert.ok(customTypes.includes("subagent-completion-unhandled"));
+		assert.equal(manager.getBranch().filter(entry => entry.type === "custom" && entry.customType === "prior-draft").length, 3);
+	} finally {
+		channel!?.dispose();
+		notifier!?.dispose();
+		session?.dispose();
+		if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+		else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+});
+
+for (const escalation of [false, true]) it(`does no idle settle work ${escalation ? "after visible approval escalation" : "without delegated work"}`, { timeout: 30_000 }, async () => {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-demand-settle-"));
+	const agentDir = path.join(root, "agent");
+	const channelDir = path.join(root, "channel");
+	fs.mkdirSync(agentDir);
+	fs.mkdirSync(path.join(channelDir, "requests"), { recursive: true });
+	const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+	process.env.PI_CODING_AGENT_DIR = agentDir;
+	const manager = SessionManager.inMemory(root);
+	const sessionId = manager.getSessionId();
+	const faux = fauxProvider({ provider: "demand-settle", models: [{ id: "local" }], tokensPerSecond: 100_000 });
+	let responses = 0;
+	faux.setResponses(Array.from({ length: 2 }, () => () => {
+		responses++;
+		return fauxAssistantMessage(escalation ? "User approval required; may the child proceed?" : "No delegated work.");
+	}));
+	let channel: ReturnType<typeof createNativeSupervisorChannel>;
+	let notifier: ReturnType<typeof registerSubagentNotify>;
+	const settingsManager = SettingsManager.inMemory({});
+	const resourceLoader = new DefaultResourceLoader({
+		cwd: root, agentDir, settingsManager,
+		noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
+		extensionFactories: [...(!escalation ? [registerSubagentExtension] : []), (api) => {
+			api.registerProvider(faux.provider);
+			if (!escalation) return;
+			const state = { currentSessionId: sessionId, supervisorOwnerSessionId: sessionId,
+				completionOwnerId: "owner", asyncJobs: new Map(), foregroundControls: new Map() } as SubagentState;
+			const parentWake = { sendMessage(message: Parameters<typeof api.sendMessage>[0]) {
+				api.sendMessage(message, { triggerTurn: false }); return true;
+			} };
+			channel = createNativeSupervisorChannel(api, state, { parentWake, getChannelDirs: () => ({ dirs: [channelDir] }) });
+			notifier = registerSubagentNotify({ events: api.events, on: api.on, ...parentWake }, state, { batchConfig: { enabled: false } });
+			api.on("session_start", () => { notifier.bindSession(manager); channel.start(); });
+		}],
+	});
+	let session: Awaited<ReturnType<typeof createAgentSession>>["session"] | undefined;
+	try {
+		await resourceLoader.reload();
+		const modelRuntime = await ModelRuntime.create({ authPath: path.join(agentDir, "auth.json"), modelsPath: path.join(agentDir, "models.json"), allowModelNetwork: false });
+		({ session } = await createAgentSession({ cwd: root, agentDir, settingsManager, resourceLoader, modelRuntime, model: faux.getModel("local"), sessionManager: manager, noTools: "builtin" }));
+		await session.bindExtensions({});
+		assert.equal(session.extensionRunner.hasHandlers("agent_before_settle"), false, "no subscriptions without unanswered work");
+		if (escalation) {
+			fs.writeFileSync(path.join(channelDir, "requests", "approval.json"), JSON.stringify({
+				type: "subagent.supervisor.request", id: "approval", createdAt: Date.now(),
+				reason: "need_decision", message: "May child proceed?", expectsReply: true,
+				orchestratorSessionId: sessionId, runId: "child", agent: "worker", childIndex: 0,
+			}));
+			channel!.activateTransport();
+			await notifier!.deliver({ id: "done", sessionId, completionOwnerId: "owner", success: true, summary: "Done" });
+			assert.equal(session.extensionRunner.hasHandlers("agent_before_settle"), true);
+			await session.prompt("Handle pending updates.");
+			assert.equal(responses, 1, "visible escalation must not make another provider call");
+			assert.equal(channel!.pending.has("approval"), true, "approval remains with user");
+			channel!.activateTransport();
+			assert.equal(session.extensionRunner.hasHandlers("agent_before_settle"), false, "acknowledged wakes unsubscribe despite pending approval");
+		}
+		let previews = 0, commits = 0;
+		const sdk = session as any;
+		const build = sdk._buildBoundaryContext.bind(session);
+		const commit = sdk._commitBoundaryDrafts.bind(session);
+		sdk._buildBoundaryContext = (...args: any[]) => {
+			if (args[1] === "agent_before_settle") previews++;
+			return build(...args);
+		};
+		sdk._commitBoundaryDrafts = (...args: any[]) => {
+			if (sdk._isBeforeSettle) commits++;
+			return commit(...args);
+		};
+		await session.prompt("No new delegated work.");
+		assert.equal(previews, 0, "idle settlement builds no full-history previews");
+		assert.equal(commits, 0, "idle settlement does no boundary context refresh");
+		assert.equal(responses, escalation ? 2 : 1);
+	} finally {
+		if (session && !escalation) await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+		channel!?.dispose();
+		notifier!?.dispose();
 		session?.dispose();
 		if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
 		else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
