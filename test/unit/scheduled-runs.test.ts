@@ -808,6 +808,41 @@ describe("project schedule management", () => {
 		assert.equal(fs.existsSync(path.join(outside, "schedules")), false);
 	});
 
+	it("allows the home directory's own .pi symlinked outside home, but not a project's .pi linked to it", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-schedule-home-link-"));
+		roots.push(root);
+		const home = path.join(root, "home");
+		const config = path.join(root, "pi-config");
+		const project = path.join(root, "project");
+		fs.mkdirSync(home);
+		fs.mkdirSync(config);
+		fs.mkdirSync(project);
+		const linkType = process.platform === "win32" ? "junction" : "dir";
+		fs.symlinkSync(config, path.join(home, ".pi"), linkType);
+		fs.symlinkSync(config, path.join(project, ".pi"), linkType);
+		const previous = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+		process.env.HOME = home;
+		process.env.USERPROFILE = home;
+		try {
+			const manager = () => createScheduledRunManager({
+				config: { scheduledRuns: { enabled: true } },
+				launch: async () => ({ content: [{ type: "text", text: "unused" }], details: { mode: "management", results: [] } }),
+			});
+			const homeManager = manager();
+			const ctx = context(home);
+			homeManager.bindSession(ctx);
+			const result = await homeManager.handleToolCall({ action: "schedule.create", id: "home", every: "1h", workflowScript: "return 1" }, ctx);
+			assert.equal(result.isError, undefined);
+			assert.equal(fs.existsSync(path.join(config, "subagents", "schedules", "home", "schedule.json")), true);
+			assert.throws(() => manager().bindSession(context(project)), /resolves outside the real project/);
+		} finally {
+			for (const [key, value] of Object.entries(previous)) {
+				if (value === undefined) delete process.env[key];
+				else process.env[key] = value;
+			}
+		}
+	});
+
 	it("allows a default project schedule root through a shared Git worktree .pi symlink", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-schedule-worktree-link-"));
 		roots.push(root);
