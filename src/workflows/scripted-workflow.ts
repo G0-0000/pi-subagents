@@ -887,7 +887,18 @@ const AST_SCALAR_KEYS = new Set(["type", "start", "end"]);
 
 function assertPortableWorkflowScript(source) {
   const wrapped = "(async () => {\n" + source + "\n})()";
-  const ast = parse(wrapped, { ecmaVersion: "latest", sourceType: "script" });
+  let ast;
+  try {
+    ast = parse(wrapped, { ecmaVersion: "latest", sourceType: "script" });
+  } catch (error) {
+    // The wrapper adds one line before the script; report the script's own line.
+    if (isSyntaxError(error) && typeof error.message === "string") {
+      const message = error.message.replace(/\((\d+):(\d+)\)$/, (_match, line, column) => "(" + Math.max(1, Number(line) - 1) + ":" + column + ")");
+      if (typeof error.stack === "string") error.stack = error.stack.replace(error.message, message);
+      error.message = message;
+    }
+    throw error;
+  }
   const wrapper = workflowWrapperFunction(ast);
   walkWorkflowAst(wrapper.body, wrapper);
 }
@@ -1005,7 +1016,7 @@ parentPort.on("message", async (message) => {
   }
   if (message.type !== "start") return;
   try {
-    const sandbox = { runs, Promise: workflowPromise, emit(value) { const emittedValue = unwrapRunsAllResults(value); assertJsonValue(emittedValue); parentPort.postMessage({ type: "emit", value: emittedValue }); }, console: capturedConsole };
+    const sandbox = { runs, Promise: workflowPromise, emit(value) { const unwrapped = unwrapRunsAllResults(value); const emittedValue = unwrapped === undefined ? null : omitUndefinedWorkflowValues(unwrapped); assertJsonValue(emittedValue); parentPort.postMessage({ type: "emit", value: emittedValue }); }, console: capturedConsole };
     if (message.stateEnabled) sandbox.state = state;
     const context = vm.createContext(sandbox, { codeGeneration: { strings: false, wasm: false } });
     contextObjectPrototype = vm.runInContext("Object.prototype", context);
@@ -1015,7 +1026,7 @@ parentPort.on("message", async (message) => {
     let compiled;
     try {
       assertPortableWorkflowScript(message.script);
-      compiled = new vm.Script("(async () => {\n" + message.script + "\n})()", { filename: "workflow-script.js" });
+      compiled = new vm.Script("(async () => {\n" + message.script + "\n})()", { filename: "workflow-script.js", lineOffset: -1 });
     } catch (error) {
       parentPort.postMessage({ type: "error", errorKind: "validation", error: isSyntaxError(error) ? formatWorkflowScriptSyntaxError(error) : formatWorkflowScriptError(error) });
       return;
@@ -1967,7 +1978,8 @@ export function validateWorkflowScript(script: string, options: WorkflowScriptVa
 				? node.arguments[1]
 				: undefined;
 		if (boundaryValue) {
-			const message = definitelyNonJson(boundaryValue);
+			// emit normalizes undefined like return; state.set values must already be JSON.
+			const message = definitelyNonJson(boundaryValue, Array.isArray(node.arguments) && boundaryValue === node.arguments[0]);
 			if (message) errors.push({ message: `workflowScript boundary value is invalid: ${message}.`, ...nodeLocation(boundaryValue) });
 		}
 	});
