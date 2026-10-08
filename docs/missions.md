@@ -142,6 +142,7 @@ Mission-bound definitions use schedule schema version 2 so older versions reject
 Behavior:
 
 - Runs always launch async with fresh context. Without `missionId`, they disable mission creation and have no `state` global.
+- Project-wide schedules (the default) fire in whichever Pi session in that project claims the fire first, and that session receives the run's notifications. Pass `sessionOnly: true` to bind restoration and every fire to the creating session; other sessions in the project never arm it.
 - An optional top-level `baseRef` selects the safe Git ref used by managed worktrees (default `HEAD`); it is persisted with the schedule and forwarded on every fire. The source checkout must still be clean.
 - Definitions, bounded history, append-only events, and per-run receipts are stored with mode `0600`.
 - `overlap` is currently fixed to `skip`; `catchUp` supports `latest` (default) and `none`.
