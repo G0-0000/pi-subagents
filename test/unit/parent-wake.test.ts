@@ -103,6 +103,20 @@ it("holds a pending wake until its run starts, and abandons it only once an idle
 	assert.equal(wake.isPending(), false, "an idle parent past the deadline has abandoned the wake");
 });
 
+it("shares one idle wake per session with other extensions, such as pi-intercom", () => {
+	const manager = SessionManager.inMemory();
+	const reservations = (globalThis as Record<symbol, WeakMap<object, { sessionId: string; sentAt?: number }>>)[Symbol.for("pi.idle-wake.v1")];
+	const { wake, wakes, advance } = createHarness(manager);
+	reservations.set(manager, { sessionId: manager.getSessionId(), sentAt: 0 });
+	wake.sendMessage(notice("during the other wake's preflight"), { triggerTurn: true });
+	assert.equal(wakes(), 0, "a second wake prompt in that preflight throws in Pi");
+	wake.agentStarted();
+	advance(1);
+	wake.sendMessage(notice("after start"), { triggerTurn: true });
+	assert.equal(wakes(), 1);
+	assert.equal(reservations.get(manager)?.sentAt, 1, "other extensions see this wake");
+});
+
 it("abandons a real SDK wake that an input handler consumes", { timeout: 30_000 }, async () => {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-parent-wake-handled-"));
 	const agentDir = path.join(root, "agent");
