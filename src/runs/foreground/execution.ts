@@ -883,6 +883,7 @@ async function runSingleAttempt(
 				currentToolDurationMs: input.currentToolDurationMs ?? currentToolDurationMs(now),
 				currentPath: input.currentPath ?? progress.currentPath,
 				recentFailureSummary: input.recentFailureSummary,
+				hasCommandController: session?.hasCommandController === true,
 				taskPreview: task,
 			});
 			emitControlEvent(event);
@@ -909,6 +910,7 @@ async function runSingleAttempt(
 				currentTool: progress.currentTool,
 				currentToolDurationMs: currentToolDurationMs(now),
 				currentPath: progress.currentPath,
+				hasCommandController: session?.hasCommandController === true,
 				elapsedMs: now - startTime,
 				taskPreview: task,
 			}));
