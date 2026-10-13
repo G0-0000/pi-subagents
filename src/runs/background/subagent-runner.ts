@@ -698,6 +698,8 @@ interface SingleStepContext {
 	capabilityCeiling?: ResolvedSubagentCapabilityCeiling;
 	runFanoutBudget?: RunFanoutBudgetDescriptor;
 	onAttemptStart?: (attempt: { model?: string; thinking?: string; contextLimit?: number }) => void;
+	/** Reports whether the created child actually carries a native command controller; cleared to false at each attempt. */
+	onCommandController?: (available: boolean) => void;
 	onChildEvent?: (event: ChildEvent) => void;
 	onExternalProcess?: (process: ExternalProcessStatus) => void;
 	prepareExternalActivity?: (cwd: string, signal: AbortSignal) => Promise<void>;
@@ -1094,6 +1096,8 @@ export async function runSingleStepInner(
 	let stagedIndexBaseline: string | undefined;
 	singleLaunch: for (let attemptIndex = 0; attemptIndex < 2; attemptIndex++) {
 		if (ctx.timeoutSignal?.aborted || ctx.stopSignal?.aborted || ctx.skipAcceptance?.()) break singleLaunch;
+		// A retried attempt must not inherit the previous attempt's controller availability.
+		ctx.onCommandController?.(false);
 		const expectedModelForVerification = candidate && !step.skipPrimaryModelVerification ? candidate : undefined;
 		try {
 			assertThinkingWithinCeiling({ model: candidate, configThinking: step.thinking, ceiling: step.thinkingCeiling, agent: step.agent, runId: ctx.id });
@@ -1219,6 +1223,7 @@ export async function runSingleStepInner(
 			registerWatchdogStatus: (sink) => { watchdogSink = sink; },
 			timeoutMessage: ctx.timeoutMessage,
 			stopMessage: ctx.stopMessage,
+			onCommandController: ctx.onCommandController,
 			onChildEvent: ctx.onChildEvent,
 			onContextWindow: (contextLimit) => ctx.onAttemptStart?.({ ...attemptModel, contextLimit }),
 			transcriptWriter,
@@ -2651,6 +2656,8 @@ export async function runSubagent(
 	};
 	const emittedControlEventKeys = new Set<string>();
 	const activeLongRunningSteps = new Set<number>();
+	// Actual command-controller availability per step, keyed by the flat step index so control notices match the child's live tools.
+	const commandControllers = new Map<number, boolean>();
 	const mutatingFailureStates = initialStatusSteps.map(() => createMutatingFailureState());
 	type PendingToolResult = { tool: string; path?: string; mutates: boolean; startedAt?: number };
 	const pendingToolResults: Array<PendingToolResult | undefined> = initialStatusSteps.map(() => undefined);
@@ -2800,6 +2807,7 @@ export async function runSubagent(
 			toolCallId: target.key.startsWith("id:") ? target.key.slice(3) : undefined,
 			currentToolDurationMs: toolDurationMs,
 			currentPath: target.path,
+			hasCommandController: commandControllers.get(flatIndex) ?? false,
 		})));
 		return true;
 	};
@@ -3846,6 +3854,7 @@ export async function runSubagent(
 					stopMessage,
 					toolTimeoutMs: task.toolTimeoutMs ?? config.toolTimeoutMs,
 					onAttemptStart: (attempt) => updateStepModel(fi, attempt.model, attempt.thinking, attempt.contextLimit),
+					onCommandController: (available) => commandControllers.set(fi, available),
 					onChildEvent: (event) => updateStepFromChildEvent(fi, event),
 					onExternalProcess: (process) => updateExternalProcess(fi, process),
 					prepareExternalActivity: (externalCwd, signal) => prepareExternalActivity(fi, externalCwd, signal),
@@ -4220,6 +4229,7 @@ export async function runSubagent(
 							stopMessage,
 							toolTimeoutMs: taskForRun.toolTimeoutMs ?? config.toolTimeoutMs,
 							onAttemptStart: (attempt) => updateStepModel(fi, attempt.model, attempt.thinking, attempt.contextLimit),
+							onCommandController: (available) => commandControllers.set(fi, available),
 							onChildEvent: (event) => updateStepFromChildEvent(fi, event),
 							onExternalProcess: (process) => updateExternalProcess(fi, process),
 							prepareExternalActivity: (externalCwd, signal) => prepareExternalActivity(fi, externalCwd, signal),
@@ -4571,6 +4581,7 @@ export async function runSubagent(
 				stopMessage,
 				toolTimeoutMs: seqStep.toolTimeoutMs ?? config.toolTimeoutMs,
 				onAttemptStart: (attempt) => updateStepModel(flatIndex, attempt.model, attempt.thinking, attempt.contextLimit),
+				onCommandController: (available) => commandControllers.set(flatIndex, available),
 				onChildEvent: (event) => updateStepFromChildEvent(flatIndex, event),
 				onExternalProcess: (process) => updateExternalProcess(flatIndex, process),
 				prepareExternalActivity: (externalCwd, signal) => prepareExternalActivity(flatIndex, externalCwd, signal),

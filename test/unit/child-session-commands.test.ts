@@ -70,6 +70,7 @@ describe("default child factory command integration", () => {
 		const factory = createDefaultChildSessionFactory({ loadPiCodingAgent: async () => fake.pi });
 		try {
 			const child = await factory.create(launch(dir, runId));
+			assert.equal(child.hasCommandController, true, "the native bash wrapper keeps the command controller");
 			assert.equal(fake.tools.has("subagent_command"), true);
 			assert.deepEqual(fake.order().slice(0, 2), ["<inline:pi-subagents:prompt-runtime>", "<inline:pi-subagents:commands>"]);
 			const result = await fake.tools.get("bash")!.execute("settings", { command: "printf settings" }, undefined, undefined, { sessionManager: { getSessionId: () => "child", getSessionFile: () => undefined } } as ExtensionContext);
@@ -92,6 +93,7 @@ describe("default child factory command integration", () => {
 			const input = launch(dir, runId);
 			input.tools = ["bash"];
 			const child = await factory.create(input);
+			assert.equal(child.hasCommandController, false, "an ambient custom bash backend replaces the native wrapper");
 			assert.equal(fake.tools.get("bash"), original);
 			assert.equal(fake.tools.has("subagent_command"), false, "custom backends must not expose an unusable native controller");
 			await child.prompt("custom command");
@@ -109,6 +111,7 @@ describe("default child factory command integration", () => {
 		input.runtime.requiredTools = ["bash", "subagent_command"];
 		try {
 			const child = await factory.create(input);
+			assert.equal(child.hasCommandController, false, "a required stub of subagent_command is not a live controller");
 			assert.equal(fake.tools.get("bash"), original);
 			assert.equal(evaluateChildToolDiagnostic(input.runtime, [...fake.tools.keys()]), undefined);
 			const commandTool = fake.tools.get("subagent_command")!;
@@ -129,7 +132,8 @@ describe("default child factory command integration", () => {
 			const input = launch(dir, runId);
 			input.tools = tools;
 			try {
-				await factory.create(input);
+				const child = await factory.create(input);
+				assert.equal(child.hasCommandController, false, "command opt-in alone never claims a controller without the native wrapper");
 				assert.equal(fake.tools.has("subagent_command"), false);
 				assert.equal(fake.order().includes("<inline:pi-subagents:commands>"), false);
 				assert.equal("yieldTimeMs" in (fake.tools.get("bash")!.parameters as { properties: object }).properties, false);
@@ -151,7 +155,8 @@ describe("default child factory command integration", () => {
 		const input = launch(dir, runId);
 		input.runtime.requiredTools = ["bash", "subagent_command"];
 		try {
-			await factory.create(input);
+			const child = await factory.create(input);
+			assert.equal(child.hasCommandController, false, "a custom backend's own command tool is not the native controller");
 			assert.equal(fake.tools.get("bash"), original);
 			assert.equal(fake.tools.get("subagent_command"), custom);
 			assert.equal(evaluateChildToolDiagnostic(input.runtime, [...fake.tools.keys()]), undefined);

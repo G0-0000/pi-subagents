@@ -390,6 +390,8 @@ export interface ControlEvent {
 	toolCount?: number;
 	currentTool?: string;
 	toolCallId?: string;
+	/** True only for a local Pi child granted both `bash` and `subagent_command`; gates command-control suggestions in notices. */
+	hasCommandController?: boolean;
 	currentToolDurationMs?: number;
 	currentPath?: string;
 	elapsedMs?: number;

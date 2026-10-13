@@ -9,6 +9,22 @@ import { watchAsyncControlInbox, requestAsyncCommand, type CommandRequest } from
 
 export const CHILD_COMMAND_TOOL = "subagent_command";
 export type CommandOperation = "status" | "yield" | "cancel";
+
+/**
+ * Whether a child launch qualifies for the native command controller. Single
+ * source of truth shared by child-session runtime wiring and control notices: a
+ * controller exists only when the child's tool allowlist explicitly grants both
+ * `bash` and `subagent_command` and neither tool is excluded. `subagent_command`
+ * is never granted through a capability ceiling, so an undefined allowlist means
+ * no controller.
+ */
+export function hasCommandController(tools?: string[], excludeTools?: string[]): boolean {
+	return Boolean(
+		tools?.includes("bash") && tools.includes(CHILD_COMMAND_TOOL)
+		&& !excludeTools?.includes("bash") && !excludeTools?.includes(CHILD_COMMAND_TOOL),
+	);
+}
+
 export interface ChildCommandSnapshot {
 	toolCallId: string;
 	state: "running" | "yielded" | "cancel_requested" | "completed" | "failed" | "cancelled";

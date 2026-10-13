@@ -12,7 +12,7 @@ import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { CHILD_COMMAND_TOOL, createChildCommandRuntime } from "./child-commands.ts";
+import { CHILD_COMMAND_TOOL, createChildCommandRuntime, hasCommandController } from "./child-commands.ts";
 import { supervisorChannelDir } from "./child-tool-plan.ts";
 import { pinChildCacheRetention } from "../../shared/child-cache-retention.ts";
 import { getAgentDir, PI_CODING_AGENT_PACKAGE_ROOT_ENV } from "../../shared/utils.ts";
@@ -110,6 +110,13 @@ export interface ChildSession {
 	dispose(): Promise<void>;
 	/** Final settlement check for commands owned by this child; unfinished commands are cancelled and reject completion. */
 	finishCommands?(): Promise<void>;
+	/**
+	 * True only when this child actually runs with the native bash wrapper and a live
+	 * command controller, so `subagent_command` can inspect or cancel its bash calls.
+	 * An ambient custom bash backend replaces the native wrapper and reports false even
+	 * though the launch named the command tool; omitted means no controller.
+	 */
+	readonly hasCommandController?: boolean;
 	/** True while Pi still has steering or follow-up input that has not started a turn. */
 	hasQueuedMessages?(): boolean;
 	readonly messages: readonly AgentMessage[];
@@ -431,8 +438,7 @@ export function createDefaultChildSessionFactory(options: DefaultChildSessionFac
 				: await sharedRuntime(pi);
 			const agentDir = getAgentDir();
 			const commands = launch.runtime.runId && launch.runtime.agent && launch.runtime.childIndex !== undefined
-				&& launch.tools?.includes("bash") && launch.tools.includes(CHILD_COMMAND_TOOL)
-				&& !launch.excludeTools?.includes("bash") && !launch.excludeTools?.includes(CHILD_COMMAND_TOOL)
+				&& hasCommandController(launch.tools, launch.excludeTools)
 				&& typeof pi.createBashTool === "function"
 				? createChildCommandRuntime(supervisorChannelDir(launch.runtime.runId, launch.runtime.agent, launch.runtime.childIndex)) : undefined;
 			const settingsManager = pi.SettingsManager.create(launch.cwd, agentDir, { projectTrusted: launch.projectTrusted });
@@ -452,6 +458,9 @@ export function createDefaultChildSessionFactory(options: DefaultChildSessionFac
 				!launch.excludeTools?.includes("codemode")
 				? [{ name: "codemode", factory: createCodemodeExtension(), replaceable: true }]
 				: [];
+			// The native bash wrapper keeps the command controller usable; an ambient custom
+			// bash backend replaces it, so the controller is reported only when it survives.
+			let nativeBashWrapperRetained = false;
 			const loader = new pi.DefaultResourceLoader({
 				cwd: launch.cwd,
 				agentDir,
@@ -468,7 +477,13 @@ export function createDefaultChildSessionFactory(options: DefaultChildSessionFac
 					api.registerTool(commands.wrap(pi.createBashTool(launch.cwd, { commandPrefix: settingsManager.getShellCommandPrefix(), shellPath: settingsManager.getShellPath() }) as unknown as ToolDefinition));
 					api.registerTool(commands.tool());
 				} }] : []), ...codemode, ...(builtinMcp ? [builtinMcp] : [])],
-				extensionsOverride: (result) => orderChildPromptHooks(prioritizeChildCommandRuntime(result)),
+				extensionsOverride: (result) => {
+					const prioritized = prioritizeChildCommandRuntime(result);
+					nativeBashWrapperRetained = prioritized.extensions.some(
+						(extension) => extension.path === "<inline:pi-subagents:commands>" && extension.tools?.has("bash"),
+					);
+					return orderChildPromptHooks(prioritized);
+				},
 				...(launch.systemPrompt !== undefined ? { systemPrompt: launch.systemPrompt } : {}),
 				...(launch.appendSystemPrompt !== undefined ? { appendSystemPrompt: [launch.appendSystemPrompt] } : {}),
 			});
@@ -565,6 +580,7 @@ export function createDefaultChildSessionFactory(options: DefaultChildSessionFac
 			const opened = loading.catch(() => {}).then(open);
 			loading = opened;
 			const session = await opened;
+			const commandControllerAvailable = commands !== undefined && nativeBashWrapperRetained;
 			let pending: Promise<void> | undefined;
 			const shutdown = () => shutdownSession(session);
 			// Outside the launch lock: MCP servers connect after `session_start` without reading the per-launch env.
@@ -584,6 +600,7 @@ export function createDefaultChildSessionFactory(options: DefaultChildSessionFac
 				subscribe: (listener) => session.subscribe((event) => listener(event as unknown as ChildSessionEvent)),
 				prompt: (text) => session.prompt(text),
 				...(commands ? { finishCommands: () => commands.finish() } : {}),
+				hasCommandController: commandControllerAvailable,
 				steer: (text) => session.steer(text),
 				followUp: (text) => session.followUp(text),
 				abort: () => session.abort(),
