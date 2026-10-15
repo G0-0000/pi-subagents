@@ -85,7 +85,7 @@ import { normalizeExtensionBindings } from "../shared/extension-bindings.ts";
 import type { ChildSessionFactory, DefaultChildSessionFactoryOptions } from "../shared/child-session.ts";
 import { runChildSession, type ChildEvent, type RunChildSessionInput, type RunChildSessionResult, type SteerDelivery, type StepSteerHandler } from "./run-child-session.ts";
 import { loadRunnerChildSessionFactory } from "./runner-child-sessions.ts";
-import { SUBAGENT_CHILD_ENV } from "../shared/child-runtime-config.ts";
+import { SUBAGENT_CHILD_ENV, SUBAGENT_RUNNER_PID_ENV } from "../shared/child-runtime-config.ts";
 import { deriveChildSessionName } from "../../shared/child-session-name.ts";
 import { alignForkedSessionCwd } from "../../shared/fork-session-cwd.ts";
 import { outputEntryFromAsyncResult, resolveOutputReferences } from "../shared/chain-outputs.ts";
@@ -167,8 +167,10 @@ const INTERCOM_DETACH_RECEIPT = "Detached for intercom coordination before task 
 
 // This process hosts child sessions. An ambient copy of pi-subagents loaded
 // into one of them must register nothing; the variable marks the process as a
-// child host.
+// child host. Processes spawned from a child inherit both variables, so only
+// the runner pid, matched against process.pid, identifies the runner itself.
 process.env[SUBAGENT_CHILD_ENV] = "1";
+process.env[SUBAGENT_RUNNER_PID_ENV] = String(process.pid);
 
 export interface SubagentRunConfig {
 	id: string;
@@ -3150,14 +3152,16 @@ export async function runSubagent(
 			const resultToolName = (event.message as { toolName?: unknown }).toolName;
 			const blockedTool = (typeof resultToolName === "string" && resultToolName.length > 0 ? resultToolName : undefined) ?? toolSnapshot?.tool;
 			const configuredToolBudget = flatSteps[flatIndex]?.toolBudget;
-			if (configuredToolBudget && isToolBudgetBlockedMessage(configuredToolBudget, resultText, blockedTool)) {
+			const budgetBlocked = Boolean(configuredToolBudget && isToolBudgetBlockedMessage(configuredToolBudget, resultText, blockedTool));
+			if (configuredToolBudget && budgetBlocked) {
 				step.toolBudget = toolBudgetState(configuredToolBudget, step.toolCount ?? 0, blockedTool);
 				step.toolBudgetBlocked = true;
 				statusPayload.toolBudget = step.toolBudget;
 				statusPayload.toolBudgetBlocked = true;
 			}
 			appendRecentStepOutput(step, resultText.split("\n").slice(-10));
-			if (toolSnapshot?.mutates && didMutatingToolFail(resultText)) {
+			// A budget block has its own signal; it is not a failing mutation.
+			if (toolSnapshot?.mutates && !budgetBlocked && didMutatingToolFail(event.message)) {
 				const state = mutatingFailureStates[flatIndex]!;
 				recordMutatingFailure(state, omitUndefinedProperties({
 					tool: toolSnapshot.tool,
