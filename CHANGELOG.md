@@ -5,6 +5,7 @@
 ### Fixed
 
 - A control notice for a long-running `bash` call in a child suggested the `command.status`, `command.yield`, and `command.cancel` controls even when the child had no command controller, because `subagent_command` is opt-in. Following the suggestion failed with "No command controller is available for this child." The notice now suggests those controls only when the child's command controller manages that `bash` call. Thanks to [@G0-0000](https://github.com/G0-0000) for [#2882](https://github.com/nicobailon/pi-subagents/pull/2882). ([#2880](https://github.com/nicobailon/pi-subagents/issues/2880))
+- After Pi auto-compacted in the middle of a running turn, the async and Fleet status widgets stayed hidden until the whole run ended, so background subagents showed no status in the TUI or to RPC hosts. They now come back as soon as the compaction finishes. Thanks to [@agustinsacco](https://github.com/agustinsacco) for [#2891](https://github.com/nicobailon/pi-subagents/pull/2891). ([#2890](https://github.com/nicobailon/pi-subagents/issues/2890))
 
 ## [0.78.0] - 2026-10-12
 
