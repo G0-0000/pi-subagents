@@ -12,7 +12,6 @@ import {
 	shouldNotifyControlEvent,
 } from "../../src/runs/shared/subagent-control.ts";
 import { nextLongRunningTrigger } from "../../src/runs/shared/long-running-guard.ts";
-import { hasCommandController } from "../../src/runs/shared/child-commands.ts";
 
 const config = resolveControlConfig(undefined, {
 	needsAttentionAfterMs: 300,
@@ -246,15 +245,6 @@ describe("subagent control attention state", () => {
 		assert.match(formatControlIntercomMessage(event), /A queued steer does not cancel an in-flight bash call/);
 	});
 
-	it("detects command-controller availability from the tools allowlist", () => {
-		assert.equal(hasCommandController(["bash", "subagent_command"]), true);
-		assert.equal(hasCommandController(["subagent_command"]), false);
-		assert.equal(hasCommandController(["bash"]), false);
-		assert.equal(hasCommandController(undefined), false);
-		assert.equal(hasCommandController(["bash", "subagent_command"], ["bash"]), false);
-		assert.equal(hasCommandController(["bash", "subagent_command"], ["subagent_command"]), false);
-	});
-
 	it("only suggests command controls when the child has a command controller", () => {
 		const base = {
 			to: "needs_attention" as const,
@@ -276,33 +266,6 @@ describe("subagent control attention state", () => {
 		assert.match(available, /"action":"command\.status","id":"78f659a3"/);
 		assert.match(available, /"action":"command\.yield"/);
 		assert.match(available, /"action":"command\.cancel"/);
-	});
-
-	it("omits command suggestions when a capability ceiling filters subagent_command from the child's tools", () => {
-		const base = {
-			to: "needs_attention" as const,
-			runId: "78f659a3",
-			agent: "worker",
-			reason: "tool_open_threshold" as const,
-			currentTool: "bash",
-			toolCallId: "call-1",
-		};
-		// The ceiling drops subagent_command from the effective allowlist the child launches with, so the
-		// child-session factory reports no controller and the notice must not suggest command.status/yield/cancel.
-		const ceilingFilteredNotice = formatControlNoticeMessage(buildControlEvent({
-			...base,
-			hasCommandController: hasCommandController(["bash"]),
-		}));
-		assert.doesNotMatch(ceilingFilteredNotice, /"action":"command\.(status|yield|cancel)"/);
-		assert.match(ceilingFilteredNotice, /Transcript: subagent\(/);
-
-		const grantedNotice = formatControlNoticeMessage(buildControlEvent({
-			...base,
-			hasCommandController: hasCommandController(["bash", "subagent_command"]),
-		}));
-		assert.match(grantedNotice, /"action":"command\.status","id":"78f659a3"/);
-		assert.match(grantedNotice, /"action":"command\.yield"/);
-		assert.match(grantedNotice, /"action":"command\.cancel"/);
 	});
 
 	it("scopes open-bash transcript inspection to the selected child without suggesting a run-wide interrupt", () => {

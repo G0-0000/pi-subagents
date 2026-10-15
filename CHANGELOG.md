@@ -4,7 +4,7 @@
 
 ### Fixed
 
-- A control notice for a long-running `bash` call in a child suggested the `command.status`, `command.yield`, and `command.cancel` controls even when the child had no command controller, because `subagent_command` is opt-in. Following the suggestion failed with "No command controller is available for this child." The notice now suggests those controls only when the child's tools include both `bash` and `subagent_command`. ([#2880](https://github.com/nicobailon/pi-subagents/issues/2880)) Thanks to @G0-0000 for #2882.
+- A control notice for a long-running `bash` call in a child suggested the `command.status`, `command.yield`, and `command.cancel` controls even when the child had no command controller, because `subagent_command` is opt-in. Following the suggestion failed with "No command controller is available for this child." The notice now suggests those controls only when the child's command controller manages that `bash` call. Thanks to [@G0-0000](https://github.com/G0-0000) for [#2882](https://github.com/nicobailon/pi-subagents/pull/2882). ([#2880](https://github.com/nicobailon/pi-subagents/issues/2880))
 
 ## [0.78.0] - 2026-10-12
 

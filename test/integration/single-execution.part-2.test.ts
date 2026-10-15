@@ -54,6 +54,9 @@ import { encodeIndexSegment } from "../../src/runs/background/index-segment.ts";
 import { waitForSubagents } from "../../src/runs/background/subagent-wait.ts";
 import { listAsyncRuns } from "../../src/runs/background/async-status.ts";
 import { formatControlNoticeMessage } from "../../src/runs/shared/subagent-control.ts";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { createChildCommandRuntime } from "../../src/runs/shared/child-commands.ts";
+import { supervisorChannelDir } from "../../src/runs/shared/child-tool-plan.ts";
 import { CHILD_WATCHDOG_STATUS_EVENT } from "../../src/watchdog/child-status.ts";
 import { createRunFanoutBudget } from "../../src/runs/shared/run-fanout-budget.ts";
 import { MainWatchdogRuntime } from "../../src/watchdog/runtime.ts";
@@ -2608,12 +2611,21 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 		assert.equal(controlEvents[0]?.type, "active_long_running");
 		assert.equal(controlEvents[0]?.reason, "turn_threshold");
 		assert.equal(controlEvents[0]?.turns, 2);
-		assert.equal(controlEvents[0]?.hasCommandController, false);
 		assert.equal(result.controlEvents?.[0]?.type, "active_long_running");
 		assert.equal(result.progress.activityState, "active_long_running");
 	});
 
-	it("propagates command controller availability to foreground control events", async () => {
+	it("suggests command controls for a long-open bash call the child's command controller manages", async () => {
+		const runId = "run-active-controller";
+		const channelDir = supervisorChannelDir(runId, "echo", 0);
+		const commands = createChildCommandRuntime(channelDir);
+		const bash = commands.wrap({
+			name: "bash", label: "bash", description: "Run a command", parameters: { type: "object", properties: {} },
+			async execute() {
+				await new Promise((resolve) => setTimeout(resolve, 150));
+				return { content: [{ type: "text", text: "ok" }], details: {} };
+			},
+		} as unknown as ToolDefinition);
 		const controlEvents: NonNullable<RunSyncResult["controlEvents"]> = [];
 		const factory = {
 			async create() {
@@ -2621,8 +2633,9 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 				return {
 					subscribe(handler: typeof listener) { listener = handler; return () => {}; },
 					async prompt() {
+						const running = bash.execute("bash-1", { command: "sleep 300" }, undefined, undefined, undefined as never);
 						listener({ type: "tool_execution_start", toolCallId: "bash-1", toolName: "bash", args: { command: "sleep 300" } });
-						await new Promise((resolve) => setTimeout(resolve, 150));
+						await running;
 						listener({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "done" }], stopReason: "stop", timestamp: Date.now() } });
 					},
 					async steer() {},
@@ -2632,27 +2645,29 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 					sessionFile: undefined,
 					sessionId: "command-controller-positive",
 					modelId: "mock/model",
-					hasCommandController: true,
 				};
 			},
 			async dispose() {},
 		};
-		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Investigate behavior", {
-			runId: "run-active-controller",
-			controlConfig: { enabled: true, activeNoticeAfterMs: 20, activeNoticeAfterTurns: 999, activeNoticeAfterTokens: 999_999, notifyOn: ["needs_attention", "active_long_running"] },
-			onControlEvent: (event: NonNullable<RunSyncResult["controlEvents"]>[number]) => controlEvents.push(event),
-			childSessionFactory: factory,
-		});
-		assert.equal(result.exitCode, 0);
-		const attentionEvent = controlEvents.find((event) => event.type === "needs_attention");
-		assert.equal(attentionEvent?.reason, "tool_open_threshold");
-		assert.equal(attentionEvent?.toolCallId, "bash-1");
-		assert.equal(attentionEvent?.currentTool, "bash");
-		assert.equal(attentionEvent?.hasCommandController, true);
-		const notice = formatControlNoticeMessage(attentionEvent!);
-		assert.match(notice, /command\.status/);
-		assert.match(notice, /command\.yield/);
-		assert.match(notice, /command\.cancel/);
+		try {
+			const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Investigate behavior", {
+				runId,
+				controlConfig: { enabled: true, activeNoticeAfterMs: 20, activeNoticeAfterTurns: 999, activeNoticeAfterTokens: 999_999, notifyOn: ["needs_attention", "active_long_running"] },
+				onControlEvent: (event: NonNullable<RunSyncResult["controlEvents"]>[number]) => controlEvents.push(event),
+				childSessionFactory: factory,
+			});
+			assert.equal(result.exitCode, 0);
+			const attentionEvent = controlEvents.find((event) => event.type === "needs_attention");
+			assert.equal(attentionEvent?.reason, "tool_open_threshold");
+			assert.equal(attentionEvent?.toolCallId, "bash-1");
+			const notice = formatControlNoticeMessage(attentionEvent!);
+			assert.match(notice, /"action":"command\.status"/);
+			assert.match(notice, /"action":"command\.yield"/);
+			assert.match(notice, /"action":"command\.cancel"/);
+		} finally {
+			await commands.shutdown();
+			fs.rmSync(channelDir, { recursive: true, force: true });
+		}
 	});
 
 	it("escalates repeated mutating tool failures to needs attention", async () => {

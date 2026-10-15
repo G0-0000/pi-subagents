@@ -58,7 +58,8 @@ import { preflightLaunchCwd } from "../shared/launch-cwd.ts";
 import { createJsonlWriter } from "../../shared/jsonl-writer.ts";
 import { createOrcaProgressTab, type OrcaProgressTab } from "../shared/orca-progress-tabs.ts";
 import { resolvePermissionRules } from "../shared/permissions.ts";
-import { applyThinkingSuffix, deriveForkPromptCacheKey } from "../shared/child-tool-plan.ts";
+import { applyThinkingSuffix, deriveForkPromptCacheKey, supervisorChannelDir } from "../shared/child-tool-plan.ts";
+import { retainsChildCommand } from "../shared/child-commands.ts";
 import { deriveChildSessionName } from "../../shared/child-session-name.ts";
 import { assertAgentAllowedByCapabilityCeiling, intersectSubagentCapabilityCeilings, resolveCurrentSubagentCapabilityCeiling } from "../shared/capability-ceiling.ts";
 import { qualifyModelWithProvider, resolveEffectiveThinking } from "../../shared/model-info.ts";
@@ -860,7 +861,7 @@ async function runSingleAttempt(
 		const mutatingFailures = createMutatingFailureState();
 		const mutatingFailureWindowMs = 5 * 60_000;
 		const currentToolDurationMs = (now: number) => progress.currentToolStartedAt ? Math.max(0, now - progress.currentToolStartedAt) : undefined;
-		const emitNeedsAttention = (now: number, input: { message?: string; reason?: ControlEvent["reason"]; recentFailureSummary?: string; currentTool?: string; toolCallId?: string; currentPath?: string; currentToolDurationMs?: number } = {}): boolean => {
+		const emitNeedsAttention = (now: number, input: { message?: string; reason?: ControlEvent["reason"]; recentFailureSummary?: string; currentTool?: string; toolCallId?: string; hasCommandController?: boolean; currentPath?: string; currentToolDurationMs?: number } = {}): boolean => {
 			if (!controlConfig.enabled) return false;
 			const previous = progress.activityState;
 			progress.activityState = "needs_attention";
@@ -880,10 +881,10 @@ async function runSingleAttempt(
 				toolCount: progress.toolCount,
 				currentTool: input.currentTool ?? progress.currentTool,
 				toolCallId: input.toolCallId,
+				hasCommandController: input.hasCommandController,
 				currentToolDurationMs: input.currentToolDurationMs ?? currentToolDurationMs(now),
 				currentPath: input.currentPath ?? progress.currentPath,
 				recentFailureSummary: input.recentFailureSummary,
-				hasCommandController: session?.hasCommandController === true,
 				taskPreview: task,
 			});
 			emitControlEvent(event);
@@ -910,7 +911,6 @@ async function runSingleAttempt(
 				currentTool: progress.currentTool,
 				currentToolDurationMs: currentToolDurationMs(now),
 				currentPath: progress.currentPath,
-				hasCommandController: session?.hasCommandController === true,
 				elapsedMs: now - startTime,
 				taskPreview: task,
 			}));
@@ -934,11 +934,13 @@ async function runSingleAttempt(
 			if (toolAttentionTarget) {
 				toolAttentionTarget.attentionEmitted = true;
 				const durationMs = Math.max(0, now - toolAttentionTarget.startedAt);
+				const toolCallId = toolAttentionTarget.key.startsWith("id:") ? toolAttentionTarget.key.slice(3) : undefined;
 				return emitNeedsAttention(now, {
 					message: `${agent.name} has had tool '${toolAttentionTarget.tool}' open for ${Math.floor(durationMs / 1000)}s`,
 					reason: "tool_open_threshold",
 					currentTool: toolAttentionTarget.tool,
-					toolCallId: toolAttentionTarget.key.startsWith("id:") ? toolAttentionTarget.key.slice(3) : undefined,
+					toolCallId,
+					hasCommandController: Boolean(toolCallId && options.runId && retainsChildCommand(supervisorChannelDir(options.runId, agent.name, options.index ?? 0), toolCallId)),
 					currentPath: toolAttentionTarget.path,
 					currentToolDurationMs: durationMs,
 				});
