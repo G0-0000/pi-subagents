@@ -149,6 +149,8 @@ node --experimental-strip-types --import ./test/support/register-loader.mjs \
 
 Both smoke reports record `authentication: "existing-cli-required"`, `settingSources: "user"`, and `userSettingsTrust: "required"` without recording credential details. For read-only, confirm `terminalState` is `completed` and `writeCanaryExists` is `false`. For writer, confirm `terminalState` is `completed` and `writeCanaryMatches` is `true`. `durationMs` records cold process time. If authentication is missing or revoked, repair the normal local Claude Code login and rerun the smoke. Reports do not contain raw protocol output or credentials.
 
+#### CodeBuddy CLI profiles
+
 The built-in `codebuddy` and `codebuddy-writer` profiles are the supported CodeBuddy CLI one-shot modes. Both require an installed CodeBuddy CLI (`codebuddy`, 2.161.0 or compatible semver) that is already authenticated through its normal local login under `~/.codebuddy`. Both adapters load user settings but exclude project and local settings, so user-level CodeBuddy settings are an operator-trusted prerequisite.
 
 | Profile | Access | Permission mode | Built-in tools |
