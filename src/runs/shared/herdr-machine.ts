@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ExternalProcessStatus, HerdrMachineReference, PlacementMachineReference } from "../../shared/types.ts";
 import { getAgentDir, getProjectConfigDir } from "../../shared/utils.ts";
+import { CODE_OWNED_EXTERNAL_CLI_ADAPTER_IDS } from "./external-cli-contract.ts";
 import type { runExternalCli } from "./external-cli-runner.ts";
 import { REX_LOCAL_MACHINE, resolveRexLocalPlacement } from "./rex-machine.ts";
 export { shellQuoteRemote as shellQuote } from "./herdr-connection.ts";
@@ -24,16 +25,12 @@ const CONTROL_CHARS = /[\u0000-\u001f\u007f]/u;
  * Herdr saved-machine placement only covers adapters with a remote machine
  * implementation. CodeBuddy is local-only for now: registering it in
  * CODE_OWNED_EXTERNAL_CLI_ADAPTER_IDS must not silently open the machine gate
- * (herdr-external-adapters would otherwise misroute it as codex).
+ * (herdr-external-adapters would otherwise misroute it as codex). Keep the gate
+ * derived so new upstream adapters are covered automatically.
  */
-const SUPPORTED_MACHINE_ADAPTERS = new Set<string>([
-	"codex-exec",
-	"codex-exec-writer",
-	"claude-code",
-	"claude-code-writer",
-	"cursor-agent",
-	"cursor-agent-writer",
-]);
+const SUPPORTED_MACHINE_ADAPTERS = new Set<string>(
+	CODE_OWNED_EXTERNAL_CLI_ADAPTER_IDS.filter((id) => !id.startsWith("codebuddy")),
+);
 /** The local ssh process gets only what ssh itself needs; remote runs use the machine's own credentials. */
 export const HERDR_SSH_ENV_ALLOWLIST = ["PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "SSH_AUTH_SOCK"] as const;
 

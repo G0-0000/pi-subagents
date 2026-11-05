@@ -11,6 +11,7 @@ import {
 	shellQuote,
 } from "../../src/runs/shared/herdr-machine.ts";
 import type { HerdrMachineReference } from "../../src/shared/types.ts";
+import { CODE_OWNED_EXTERNAL_CLI_ADAPTER_IDS } from "../../src/runs/shared/external-cli-contract.ts";
 import { herdrPaneAllocationKey } from "../../src/runs/shared/placement-host.ts";
 import { connectHerdrMachine, decodeHerdrJsonLine, discoverHerdrEndpoint, hardenedSshEnv, herdrSshArgs, HERDR_REMOTE_PATH, HERDR_SSH_BASE, runHerdrRemoteCommandAsync, sshMachineAccess } from "../../src/runs/shared/herdr-connection.ts";
 import { createRemoteRuntimeDir, discoverBridgeManifest, removeRemoteRuntimeDir } from "../../src/runs/shared/herdr-pane-host.ts";
@@ -149,6 +150,16 @@ describe("Herdr machine placement", () => {
 				assert.match(formatHerdrMachineRunnerUnsupported({ machine: "workmac", agentName: "worker", runnerType: "external-cli", adapter: "claude-code" }) ?? "", /Windows host/u);
 			} else {
 				assert.equal(formatHerdrMachineRunnerUnsupported({ machine: "workmac", agentName: "worker", runnerType: "external-cli", adapter: "claude-code-writer" }), undefined);
+			}
+		});
+
+		it("derives the machine gate from the code-owned list minus the local-only CodeBuddy profiles", () => {
+			assert.ok(CODE_OWNED_EXTERNAL_CLI_ADAPTER_IDS.includes("codebuddy"));
+			assert.ok(CODE_OWNED_EXTERNAL_CLI_ADAPTER_IDS.includes("codebuddy-writer"));
+			for (const adapter of CODE_OWNED_EXTERNAL_CLI_ADAPTER_IDS) {
+				const message = formatHerdrMachineRunnerUnsupported({ machine: "workmac", agentName: "worker", runnerType: "external-cli", adapter }) ?? "";
+				if (adapter.startsWith("codebuddy")) assert.match(message, /run on this machine only/u);
+				else assert.doesNotMatch(message, /run on this machine only/u);
 			}
 		});
 	});
